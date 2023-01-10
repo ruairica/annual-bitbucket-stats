@@ -1,23 +1,28 @@
-export interface PullRequest {
+export interface UserPullRequestResponse {
+    values: Value[];
+    pagelen: number;
+    size: number;
+    page: number;
+    next: string;
+}
+
+export interface Value {
     comment_count: number;
     task_count: number;
     type: string;
     id: number;
     title: string;
     description: string;
-    rendered: Rendered;
     state: string;
-    merge_commit: null;
+    merge_commit: Commit;
     close_source_branch: boolean;
-    closed_by: null;
+    closed_by: Author;
     author: Author;
     reason: string;
     created_on: string;
     updated_on: string;
     destination: Destination;
     source: Destination;
-    reviewers: any[];
-    participants: UserResponse[];
     links: { [key: string]: Link };
     summary: Summary;
 }
@@ -54,10 +59,10 @@ export interface Branch {
 export interface Commit {
     type: string;
     hash: string;
-    links: CommitLinks;
+    links: MergeCommitLinks;
 }
 
-export interface CommitLinks {
+export interface MergeCommitLinks {
     self: Link;
     html: Link;
 }
@@ -70,42 +75,9 @@ export interface Repository {
     uuid: string;
 }
 
-export interface Rendered {
-    title: Summary;
-    description: Summary;
-}
-
 export interface Summary {
     type: string;
     raw: string;
     markup: string;
     html: string;
-}
-
-export interface UserResponse {
-    type: string;
-    user: User;
-    role: string;
-    approved: boolean;
-    state: null;
-    participated_on: string;
-}
-
-export interface User {
-    display_name: string;
-    links: Links;
-    type: string;
-    uuid: string;
-    account_id: string;
-    nickname: string;
-}
-
-export interface Links {
-    self: Avatar;
-    avatar: Avatar;
-    html: Avatar;
-}
-
-export interface Avatar {
-    href: string;
 }
