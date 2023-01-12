@@ -1,10 +1,11 @@
 import axios from 'axios';
 import { diffNums, toBase64 } from './helper.js';
 import { DiffStat } from './types/DiffStat.js';
-import { UserPullRequestResponse } from './types/UserPullRequestResponse.js';
+import { PullRequestCommentsResponse } from './types/PullRequestComments.js';
+import { PullRequestResponse } from './types/UserPullRequestResponse.js';
 import { UserResponse } from './types/UserResponse.js';
 const userName = 'ruairicaldwell';
-const appPassword = 'PASSWORD HERE';
+const appPassword = '';
 axios.defaults.headers.common['Authorization'] = `Basic ${toBase64(`${userName}:${appPassword}`)}`;
 
 async function getPullRequest() {
@@ -25,7 +26,8 @@ async function getMergedPullRequestsForUser(userId: string) {
 }
 
 async function getPullRequestPage(url: string) {
-    const response = await axios.get<UserPullRequestResponse>(url);
+    const response = await axios.get<PullRequestResponse>(url);
+
     console.log(
         `retrieved page ${response.data.page}/${Math.ceil(
             response.data.size / response.data.pagelen
@@ -33,23 +35,61 @@ async function getPullRequestPage(url: string) {
     );
 
     for (const pr of response.data.values) {
-        console.log(pr.id, pr.destination.repository.name);
-        await getDiffStatForPr(pr.id, pr.destination.repository.uuid, pr.destination.repository.name);
+        console.log(pr.destination.repository.uuid, pr.destination.repository.name);
+        reposContributedTo.add(pr.destination.repository.uuid);
+        await getDiffStatForPr(
+            pr.id,
+            pr.destination.repository.uuid,
+            pr.destination.repository.name
+        );
         if (!sums.has(pr.destination.repository.name)) {
             sums.set(pr.destination.repository.name, 1);
         } else {
             sums.set(pr.destination.repository.name, sums.get(pr.destination.repository.name) + 1);
         }
     }
+    return;
 
     if (response.data.next) {
         await getPullRequestPage(response.data.next);
     }
 }
 
+async function getPullRequestComments(url: string) {
+    const response = await axios.get<PullRequestCommentsResponse>(url);
+
+    for (const comment of response.data.values) {
+        if (userIds.includes(comment.user.uuid)) {
+            totalComments += 1;
+        }
+    }
+
+    if (response.data.next) {
+        await getPullRequestComments(response.data.next);
+    }
+}
+async function getAllPullRequestsForRepoNotMine(repoId: string, userId: string) {
+    const initialRequest = `https://api.bitbucket.org/2.0/repositories/esosolutions/${repoId}/?q=state="MERGED" AND author.uuid != "${userId}" AND created_on > 2022-11-01T00:00:00-00:00 AND created_on < 2023-01-01T00:00:00-00:00`;
+    await getPullRequestComments(initialRequest);
+}
+
+async function goThroughPullRequestsForComments(url: string, userId: string) {
+    const response = await axios.get<PullRequestResponse>(url);
+
+    for (const pr of response.data.values) {
+        await getPullRequestComments(
+            `https://api.bitbucket.org/2.0/repositories/esosolutions/${pr.destination.repository.uuid}/pullrequests/${pr.id}/comments`
+        );
+    }
+
+    if (response.data.next) {
+        await goThroughPullRequestsForComments(response.data.next, userId);
+    }
+}
+
 async function getDiffStatForPr(prId: number, repoId: string, repoName: string) {
     const url = `https://api.bitbucket.org/2.0/repositories/esosolutions/${repoId}/pullrequests/${prId}/diffstat`;
-    console.log(prId, repoId);
+    console.log('diff stat for', prId, repoId);
     const response = await axios.get<DiffStat>(url);
     let added = 0;
     let removed = 0;
@@ -69,6 +109,9 @@ async function getCurrentUserId() {
     return response.data.uuid;
 }
 
+let totalComments = 0;
+let requestsCommentedOn = 0;
+const reposContributedTo = new Set();
 const sums = new Map<string, number>();
 // key  = repo name - PR Id
 const diffs = new Map<string, diffNums>();
@@ -78,13 +121,24 @@ for (const userId of userIds) {
     console.log('for userId=', userId);
     await getMergedPullRequestsForUser(userId);
     // await getDiffStatForPr(848, 'Internal&20Tools%20v2');
+    // for (const repoId: string of reposContributedTo) {
+    //     await getAllPullRequestsForRepoNotMine(repoId, userId);
+    // }
 }
 
-const totalMergedPRs = [...sums.values()].reduce((a, b) => a + b, 0);
-console.log('total pull requests', totalMergedPRs);
-console.log(sums);
-console.log(diffs);
+// console.log(sums);
+// const totalMergedPRs = [...sums.values()].reduce((a, b) => a + b, 0);
+// console.log('total pull requests:', totalMergedPRs);
+// console.log(diffs);
+// const totalLinesAdded = [...diffs.values()].reduce((a, b) => a + b.linesAdded, 0);
+// const totalLinesRemoved = [...diffs.values()].reduce((a, b) => a + b.linesRemoved, 0);
+// console.log('total lines added:', totalLinesAdded);
+// console.log('total lines removed:', totalLinesRemoved);
 
+await getPullRequestComments(
+    'https://api.bitbucket.org/2.0/repositories/esosolutions/inventory/pullrequests/1893/comments'
+);
+console.log(totalComments);
 // these are returned from the get pull request endpoint
 //TESTING
 // comments

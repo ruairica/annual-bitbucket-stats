@@ -1,4 +1,4 @@
-export interface UserPullRequestResponse {
+export interface PullRequestResponse {
     values: Value[];
     pagelen: number;
     size: number;
