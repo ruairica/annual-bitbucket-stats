@@ -1,8 +1,8 @@
 export const hey = 'hey';
 
-export interface sampleInterface {
-    one: string;
-    two: number;
+export interface prTag {
+    id: number;
+    repoId: string;
 }
 
 export interface diffNums {
