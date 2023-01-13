@@ -21,40 +21,38 @@ async function makeGenericRequest(url: string) {
     return response.data;
 }
 
-async function getMergedPullRequestsForUser(userId: string) {
-    const initialRequest = `https://api.bitbucket.org/2.0/pullrequests/${userId}?q=state="MERGED" AND created_on > 2022-11-01T00:00:00-00:00 AND created_on < 2023-01-01T00:00:00-00:00`;
-    await getPullRequestPage(initialRequest);
-}
+async function* pageThroughResource(endpoint: string) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    async function* makeRequest(_endpoint: string): any {
+        const response = await axios.get<PullRequestResponse>(_endpoint);
+        const page = response.data;
 
-async function getPullRequestPage(url: string) {
-    const response = await axios.get<PullRequestResponse>(url);
+        yield page;
 
-    console.log(
-        `retrieved page ${response.data.page}/${Math.ceil(
-            response.data.size / response.data.pagelen
-        )} (total pull requests = ${response.data.size})`
-    );
-
-    for (const pr of response.data.values) {
-        console.log(pr.destination.repository.uuid, pr.destination.repository.name);
-        myPrs.push({ id: pr.id, repoId: pr.destination.repository.uuid });
-        if (!sums.has(pr.destination.repository.name)) {
-            sums.set(pr.destination.repository.name, 1);
-        } else {
-            sums.set(pr.destination.repository.name, sums.get(pr.destination.repository.name) + 1); // TODO ternary
+        if (page.next) {
+            yield* makeRequest(page.next);
         }
     }
 
-    if (response.data.next) {
-        await getPullRequestPage(response.data.next);
+    yield* makeRequest(endpoint);
+}
+
+async function* loadUsersPullRequests(userId: string) {
+    const initialRequest = `https://api.bitbucket.org/2.0/pullrequests/${userId}?q=state="MERGED" AND created_on > 2022-11-01T00:00:00-00:00 AND created_on < 2023-01-01T00:00:00-00:00`;
+    const result = pageThroughResource(initialRequest);
+
+    for await (const page of result) {
+        for (const pr of page.values) {
+            yield pr;
+        }
     }
 }
 
 async function getPullRequestComments(url: string) {
     const response = await axios.get<PullRequestCommentsResponse>(url);
-
     for (const comment of response.data.values) {
-        if (userId.includes(comment.user.uuid)) {
+        if (userId === comment.user.uuid) {
+            console.log(url);
             totalComments += 1;
         }
     }
@@ -64,13 +62,12 @@ async function getPullRequestComments(url: string) {
     }
 }
 async function getAllPullRequestsForRepoNotMine(repoId: string, userId: string) {
-    const initialRequest = `https://api.bitbucket.org/2.0/repositories/esosolutions/${repoId}/?q=state="MERGED" AND author.uuid != "${userId}" AND created_on > 2022-11-01T00:00:00-00:00 AND created_on < 2023-01-01T00:00:00-00:00`;
-    await getPullRequestComments(initialRequest);
+    const initialRequest = `https://api.bitbucket.org/2.0/repositories/esosolutions/${repoId}/pullrequests?q=state="MERGED" AND author.uuid != "${userId}" AND created_on > 2022-11-20T00:00:00-00:00 AND created_on < 2023-01-01T00:00:00-00:00`;
+    await goThroughPullRequestsForComments(initialRequest, userId);
 }
 
 async function goThroughPullRequestsForComments(url: string, userId: string) {
     const response = await axios.get<PullRequestResponse>(url);
-
     for (const pr of response.data.values) {
         await getPullRequestComments(
             `https://api.bitbucket.org/2.0/repositories/esosolutions/${pr.destination.repository.uuid}/pullrequests/${pr.id}/comments`
@@ -81,10 +78,8 @@ async function goThroughPullRequestsForComments(url: string, userId: string) {
         await goThroughPullRequestsForComments(response.data.next, userId);
     }
 }
-
 async function getDiffStatForPr(prId: number, repoId: string): Promise<diffNums> {
     const url = `https://api.bitbucket.org/2.0/repositories/esosolutions/${repoId}/pullrequests/${prId}/diffstat`;
-    console.log('diff stat for', prId, repoId);
     const response = await axios.get<DiffStat>(url);
     let added = 0;
     let removed = 0;
@@ -109,20 +104,42 @@ const sums = new Map<string, number>();
 // key  = repo name - PR Id
 const userId = await getCurrentUserId(); // [await getCurrentUserId()]; // can add uuid's of previous bitbucket account to this array (have to get them out of dev tools of old pull requests).
 const myPrs: prTag[] = [];
-await getMergedPullRequestsForUser(userId);
+// await getMergedPullRequestsForUser(userId);
+
+// number of PR's by me
+for await (const pr of loadUsersPullRequests(userId)) {
+    myPrs.push({ id: pr.id, repoId: pr.destination.repository.uuid });
+    if (!sums.has(pr.destination.repository.name)) {
+        sums.set(pr.destination.repository.name, 1);
+    } else {
+        sums.set(pr.destination.repository.name, sums.get(pr.destination.repository.name) + 1); // TODO ternary
+    }
+}
 
 console.log(sums);
 const totalMergedPRs = [...sums.values()].reduce((a, b) => a + b, 0);
 console.log('total pull requests:', totalMergedPRs);
 
-const promises: Promise<diffNums>[] = [];
+// diff stats
+const diffPromises: Promise<diffNums>[] = [];
 for (const pullreq of myPrs) {
-    promises.push(getDiffStatForPr(pullreq.id, pullreq.repoId));
+    diffPromises.push(getDiffStatForPr(pullreq.id, pullreq.repoId));
 }
 
-const diffs = await Promise.all(promises);
+const diffs = await Promise.all(diffPromises);
 const totalLinesAdded = diffs.reduce((a, b) => a + b.linesAdded, 0);
 const totalLinesRemoved = diffs.reduce((a, b) => a + b.linesRemoved, 0);
 console.log('total lines added:', totalLinesAdded);
 console.log('total lines removed:', totalLinesRemoved);
+
+//comments
+const repoIdsOfReposIContributedTo = new Set(myPrs.map((x) => x.repoId));
+console.log(repoIdsOfReposIContributedTo);
+for (const repoId of repoIdsOfReposIContributedTo) {
+    console.log('on repo', repoId);
+    await getAllPullRequestsForRepoNotMine(repoId, userId);
+}
+
+console.log(totalComments);
+
 console.timeEnd();
