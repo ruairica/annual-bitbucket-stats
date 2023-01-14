@@ -32,7 +32,7 @@ async function getAllPaginatedValuesPr(url: string) {
 }
 
 async function getAllCommentsForExcludingMyPrs(repoId: string, userId: string) {
-    const initialRequest = `https://api.bitbucket.org/2.0/repositories/esosolutions/${repoId}/pullrequests?q=state="MERGED" AND author.uuid != "${userId}" AND created_on > 2022-11-20T00:00:00-00:00 AND created_on < 2023-01-01T00:00:00-00:00`;
+    const initialRequest = `${baseUrl}/repositories/${workSpace}/${repoId}/pullrequests?q=state="MERGED" AND author.uuid != "${userId}" AND created_on > 2022-11-20T00:00:00-00:00 AND created_on < 2023-01-01T00:00:00-00:00`;
 
     let commentResponsePromises = [];
     for (const pr of await getAllPaginatedValuesPr(initialRequest)) {
@@ -40,7 +40,7 @@ async function getAllCommentsForExcludingMyPrs(repoId: string, userId: string) {
         commentResponsePromises.push(
             limit(() =>
                 getPrComments(
-                    `https://api.bitbucket.org/2.0/repositories/esosolutions/${pr.destination.repository.uuid}/pullrequests/${pr.id}/comments`
+                    `${baseUrl}/repositories/${workSpace}/${pr.destination.repository.uuid}/pullrequests/${pr.id}/comments`
                 )
             )
         );
@@ -72,7 +72,7 @@ async function getPrComments(url: string) {
 }
 
 async function getDiffStatForPr(prId: number, repoId: string): Promise<diffNums> {
-    const url = `https://api.bitbucket.org/2.0/repositories/esosolutions/${repoId}/pullrequests/${prId}/diffstat`;
+    const url = `${baseUrl}/repositories/${workSpace}/${repoId}/pullrequests/${prId}/diffstat`;
     const response = await axios.get<DiffStat>(url);
     let added = 0;
     let removed = 0;
@@ -88,7 +88,7 @@ async function getDiffStatForPr(prId: number, repoId: string): Promise<diffNums>
 }
 
 async function getCurrentUserId() {
-    const response = await axios.get<UserResponse>(`https://api.bitbucket.org/2.0/user`);
+    const response = await axios.get<UserResponse>(`${baseUrl}/user`);
     return response.data.uuid;
 }
 console.time();
@@ -97,7 +97,7 @@ const userId = await getCurrentUserId(); // [await getCurrentUserId()]; // can a
 const myPrs: prTag[] = [];
 
 const prss = await getAllPaginatedValuesPr(
-    `https://api.bitbucket.org/2.0/pullrequests/${userId}?q=state="MERGED" AND created_on > 2022-11-01T00:00:00-00:00 AND created_on < 2023-01-01T00:00:00-00:00`
+    `${baseUrl}/pullrequests/${userId}?q=state="MERGED" AND created_on > 2022-11-01T00:00:00-00:00 AND created_on < 2023-01-01T00:00:00-00:00`
 );
 
 for (const pr of prss) {
