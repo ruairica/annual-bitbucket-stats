@@ -9,6 +9,14 @@ refactor to use promise.all -- DONE
 
 Think diffstat might be broken
 
-refactor to only check pull requests going into main/develop/release as if destination branch is deleted there is no diff
-possibly get diff stats per repo???
+
+DONE
+Prs per repo
+total Prs merged
+total lines added
+total lines removed
+total comments,
+Pr's reviewed
+
+TODO
 make variables for year, workspace etc

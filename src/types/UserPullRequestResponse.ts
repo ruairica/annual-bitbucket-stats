@@ -81,3 +81,22 @@ export interface Summary {
     markup: string;
     html: string;
 }
+
+export interface User {
+    display_name: string;
+    links: Links;
+    type: string;
+    uuid: string;
+    account_id: string;
+    nickname: string;
+}
+
+export interface Links {
+    self: Avatar;
+    avatar: Avatar;
+    html: Avatar;
+}
+
+export interface Avatar {
+    href: string;
+}
