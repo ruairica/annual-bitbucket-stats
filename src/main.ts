@@ -21,19 +21,19 @@ async function makeGenericRequest(url: string) {
     return response.data;
 }
 
-async function* pageThroughResource(endpoint: string) {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    async function* makeRequest(_endpoint: string): any {
-        const response = await axios.get<PullRequestResponse>(_endpoint);
-        const page = response.data;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function* makeRequest(_endpoint: string): any {
+    const response = await axios.get<PullRequestResponse>(_endpoint);
+    const page = response.data;
 
-        yield page;
+    yield page;
 
-        if (page.next) {
-            yield* makeRequest(page.next);
-        }
+    if (page.next) {
+        yield* makeRequest(page.next);
     }
+}
 
+async function* pageThroughResource(endpoint: string) {
     yield* makeRequest(endpoint);
 }
 
@@ -46,6 +46,47 @@ async function* loadUsersPullRequests(userId: string) {
             yield pr;
         }
     }
+}
+
+async function AsyncgetAllPullRequestsForRepoNotMine(repoId: string, userId: string) {
+    const initialRequest = `https://api.bitbucket.org/2.0/repositories/esosolutions/${repoId}/pullrequests?q=state="MERGED" AND author.uuid != "${userId}" AND created_on > 2022-11-20T00:00:00-00:00 AND created_on < 2023-01-01T00:00:00-00:00`;
+    const allPullRequestsResponses: PullRequestCommentsResponse[] = [];
+    const response = await axios.get<PullRequestCommentsResponse>(initialRequest);
+    allPullRequestsResponses.push(response.data);
+
+    let promiseArray = [];
+    let totalTrips = response.data.size;
+    let totalPages = Math.ceil(totalTrips / response.data.pagelen);
+    console.log(
+        'pagelen',
+        response.data.pagelen,
+        'size',
+        response.data.size,
+        'total pages',
+        totalPages
+    );
+    for (let i = 2; i <= totalPages; i++) {
+        promiseArray.push(
+            axios.get<PullRequestCommentsResponse>(
+                `https://api.bitbucket.org/2.0/repositories/esosolutions/${repoId}/pullrequests?q=state="MERGED" AND author.uuid != "${userId}" AND created_on > 2022-11-20T00:00:00-00:00 AND created_on < 2023-01-01T00:00:00-00:00&page=${i}`
+            )
+        );
+    }
+    const resolvedPromises = await Promise.all(promiseArray);
+    console.log('requests made', resolvedPromises.length + 1);
+    allPullRequestsResponses.push(...resolvedPromises.map((x) => x.data));
+    console.log('allPullRequestsResponses', allPullRequestsResponses.length);
+
+    const allPullRequests = allPullRequestsResponses.flatMap((x) => x.values);
+    // have all pull requets here, for each one, get all the comments in a similar way?
+
+    for (const pr of allPullRequests) {
+    }
+}
+
+async function getAllPullRequestsForRepoNotMine(repoId: string, userId: string) {
+    const initialRequest = `https://api.bitbucket.org/2.0/repositories/esosolutions/${repoId}/pullrequests?q=state="MERGED" AND author.uuid != "${userId}" AND created_on > 2022-11-20T00:00:00-00:00 AND created_on < 2023-01-01T00:00:00-00:00`;
+    await goThroughPullRequestsForComments(initialRequest, userId);
 }
 
 async function getPullRequestComments(url: string) {
@@ -61,10 +102,6 @@ async function getPullRequestComments(url: string) {
         await getPullRequestComments(response.data.next);
     }
 }
-async function getAllPullRequestsForRepoNotMine(repoId: string, userId: string) {
-    const initialRequest = `https://api.bitbucket.org/2.0/repositories/esosolutions/${repoId}/pullrequests?q=state="MERGED" AND author.uuid != "${userId}" AND created_on > 2022-11-20T00:00:00-00:00 AND created_on < 2023-01-01T00:00:00-00:00`;
-    await goThroughPullRequestsForComments(initialRequest, userId);
-}
 
 async function goThroughPullRequestsForComments(url: string, userId: string) {
     const response = await axios.get<PullRequestResponse>(url);
@@ -75,6 +112,7 @@ async function goThroughPullRequestsForComments(url: string, userId: string) {
     }
 
     if (response.data.next) {
+        console.log(response.data.next);
         await goThroughPullRequestsForComments(response.data.next, userId);
     }
 }
@@ -137,9 +175,10 @@ const repoIdsOfReposIContributedTo = new Set(myPrs.map((x) => x.repoId));
 console.log(repoIdsOfReposIContributedTo);
 for (const repoId of repoIdsOfReposIContributedTo) {
     console.log('on repo', repoId);
-    await getAllPullRequestsForRepoNotMine(repoId, userId);
+    // await getAllPullRequestsForRepoNotMine(repoId, userId);
+    await AsyncgetAllPullRequestsForRepoNotMine(repoId, userId);
 }
 
-console.log(totalComments);
+// console.log(totalComments);
 
 console.timeEnd();

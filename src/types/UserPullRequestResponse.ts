@@ -1,12 +1,12 @@
 export interface PullRequestResponse {
-    values: Value[];
+    values: PullRequestItem[];
     pagelen: number;
     size: number;
     page: number;
     next: string;
 }
 
-export interface Value {
+export interface PullRequestItem {
     comment_count: number;
     task_count: number;
     type: string;
