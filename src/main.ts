@@ -8,7 +8,7 @@ import { UserResponse } from './types/UserResponse.js';
 
 const limit = pLimit(100);
 const userName = 'ruairicaldwell';
-const appPassword = 'ATBBzKSwJyuqfweZDFenGjSMQhBR7354B12F';
+const appPassword = '';
 const workSpace = 'esosolutions';
 const year = 2022;
 
@@ -35,15 +35,17 @@ export async function getAllPaginatedValuesPr(url: string) {
 
 // returns a lists of all comments on all PR's in a repo that were not authored by the current
 export async function getAllCommentsForExcludingMyPrs(repoId: string, userId: string) {
-    const initialRequest = `${baseUrl}/repositories/${workSpace}/${repoId}/pullrequests?q=state="MERGED" AND author.uuid != "${userId}" AND created_on > 2022-11-20T00:00:00-00:00 AND created_on < 2023-01-01T00:00:00-00:00`;
+    const initialRequest = `${baseUrl}/repositories/${workSpace}/${repoId}/pullrequests?q=state="MERGED" AND author.uuid != "${userId}" AND created_on > ${year}-01-01T00:00:00-00:00 AND created_on < ${
+        year + 1
+    }-01-01T00:00:00-00:00`;
 
-    let commentResponsePromises = (await getAllPaginatedValuesPr(initialRequest)).map((pr) =>
-        limit(() =>
+    let commentResponsePromises = (await getAllPaginatedValuesPr(initialRequest)).map((pr) => {
+        return limit(() =>
             getPrComments(
                 `${baseUrl}/repositories/${workSpace}/${pr.destination.repository.uuid}/pullrequests/${pr.id}/comments`
             )
-        )
-    );
+        );
+    });
 
     let commentResponses = await Promise.all(commentResponsePromises);
     const comments = commentResponses.flatMap((x) => x.values);
@@ -91,11 +93,14 @@ export async function getCurrentUserId() {
 
 console.time();
 const sums = new Map<string, number>();
-const userId = await getCurrentUserId(); // [await getCurrentUserId()]; // can add uuid's of previous bitbucket account to this array (have to get them out of dev tools of old pull requests).
+const userId =  await getCurrentUserId();
 const myPrs: prTag[] = [];
 
+console.log('getting my pull requests');
 for (const pr of await getAllPaginatedValuesPr(
-    `${baseUrl}/pullrequests/${userId}?q=state="MERGED" AND created_on > 2022-11-01T00:00:00-00:00 AND created_on < 2023-01-01T00:00:00-00:00`
+    `${baseUrl}/pullrequests/${userId}?q=state="MERGED" AND created_on > ${year}-01-01T00:00:00-00:00 AND created_on < ${
+        year + 1
+    }-01-01T00:00:00-00:00`
 )) {
     if (
         pr.destination.branch.name == 'develop' ||
@@ -103,17 +108,19 @@ for (const pr of await getAllPaginatedValuesPr(
         pr.destination.branch.name.startsWith('release') ||
         pr.destination.branch.name == 'development'
     ) {
-        console.log('normal merge', pr.destination.branch.name);
+        // console.log('normal merge', pr.destination.branch.name);
 
         myPrs.push({ id: pr.id, repoId: pr.destination.repository.uuid });
     } else {
-        console.log('found-a-straggler', pr.destination.branch.name);
+        // console.log('found-a-straggler', pr.destination.branch.name);
     }
 
     sums.set(pr.destination.repository.name, (sums.get(pr.destination.repository.name) ?? 0) + 1);
 }
 
 const totalMergedPRs = [...sums.values()].reduce((a, b) => a + b, 0);
+
+console.log('getting diffs');
 
 const diffs = await Promise.all(
     myPrs.map((pullreq) => limit(() => getDiffStatForPr(pullreq.id, pullreq.repoId)))
@@ -123,6 +130,7 @@ const totalLinesRemoved = diffs.reduce((a, b) => a + b.linesRemoved, 0);
 
 // reviews done
 const repoIdsOfReposIContributedTo = new Set(myPrs.map((x) => x.repoId));
+console.log('getting comments');
 const allComments = (
     await Promise.all(
         Array.from(repoIdsOfReposIContributedTo).map((repoId) =>
@@ -134,6 +142,8 @@ const myComments = allComments.filter((x) => x.uuid == userId);
 const distinctPrsCommentedOn = new Set(myComments.map((x) => x.prId));
 const myTotalComments = myComments.length;
 
+console.log(allComments.length);
+console.log(new Set(allComments.map((x) => x.uuid)));
 // output
 console.log('number of PRs reviewed', distinctPrsCommentedOn.size);
 console.log("total comments left on other people's pr's", myTotalComments);
