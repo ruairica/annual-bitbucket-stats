@@ -5,7 +5,8 @@ there is a rate limit of 1000 requests per hour, which I've just learned about a
 TODO
 change number of PR's reviewed to include PR's approved OR commented on -- done
 add inputs of branch names to check for diffs -- done
-move functions to separate files
+move functions to separate files -- done NEEDS TESTED
+reduce code duplication/refactor const strings
 make output better
 Check how much of the diff was for tests?
 add error handling for if/when diff is ungettable
