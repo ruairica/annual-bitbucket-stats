@@ -1,6 +1,7 @@
 import axios from 'axios';
 import pLimit from 'p-limit';
-import { commentModel, diffNums, prTag, toBase64 } from './helper.js';
+import { commentModel, diffNums, fullPrIdName, prTag, toBase64 } from './helper.js';
+import { PRActivityResponse } from './types/ApprovalResponse.js';
 import { DiffStat } from './types/DiffStat.js';
 import { PullRequestCommentsResponse } from './types/PullRequestComments.js';
 import { PullRequestResponse } from './types/UserPullRequestResponse.js';
@@ -33,13 +34,43 @@ export async function getAllPaginatedValuesPr(url: string) {
     return responseData.flatMap((x) => x.values);
 }
 
+// returns list of all PRs I approved
+export async function getAllPrsIApproved(repoId: string, userId: string) {
+    const initialRequest = `${baseUrl}/repositories/${workSpace}/${repoId}/pullrequests?q=state="MERGED" AND author.uuid != "${userId}" AND created_on > ${year}-01-01T00:00:00-00:00 AND created_on < ${
+        year + 1
+    }-01-01T00:00:00-00:00`;
+
+    const allPrs = await getAllPaginatedValuesPr(initialRequest);
+    const prActivityPromises = allPrs.map((pr) => {
+        return limit(() =>
+            getPrActivity(
+                `${baseUrl}/repositories/${workSpace}/${pr.destination.repository.uuid}/pullrequests/${pr.id}/activity`
+            )
+        );
+    });
+
+    const prActivitiesAll = await Promise.all(prActivityPromises);
+    const prActivies = prActivitiesAll.flatMap((x) => x.values);
+    console.log(
+        JSON.stringify(
+            prActivies
+                .filter((x) => x.approval && x.approval.user.uuid === userId)
+                .map((x) => ({ repo: repoId, prId: x.pull_request.id }))
+        )
+    );
+    return prActivies
+        .filter((x) => x.approval && x.approval.user.uuid === userId)
+        .map((x) => fullPrIdName(repoId, x.pull_request.id));
+}
+
 // returns a lists of all comments on all PR's in a repo that were not authored by the current
 export async function getAllCommentsForExcludingMyPrs(repoId: string, userId: string) {
     const initialRequest = `${baseUrl}/repositories/${workSpace}/${repoId}/pullrequests?q=state="MERGED" AND author.uuid != "${userId}" AND created_on > ${year}-01-01T00:00:00-00:00 AND created_on < ${
         year + 1
     }-01-01T00:00:00-00:00`;
 
-    let commentResponsePromises = (await getAllPaginatedValuesPr(initialRequest)).map((pr) => {
+    const allPrs = await getAllPaginatedValuesPr(initialRequest);
+    let commentResponsePromises = allPrs.map((pr) => {
         return limit(() =>
             getPrComments(
                 `${baseUrl}/repositories/${workSpace}/${pr.destination.repository.uuid}/pullrequests/${pr.id}/comments`
@@ -65,12 +96,17 @@ export async function getAllCommentsForExcludingMyPrs(repoId: string, userId: st
     }
 
     return comments.map(
-        (x) => ({ uuid: x.user.uuid, prId: `${repoId}_${x.pullrequest.id}` } as commentModel)
+        (x) => ({ uuid: x.user.uuid, prId: fullPrIdName(repoId, x.pullrequest.id) } as commentModel)
     );
 }
 
 export async function getPrComments(url: string) {
     const response = await axios.get<PullRequestCommentsResponse>(url);
+    return response.data;
+}
+
+export async function getPrActivity(url: string) {
+    const response = await axios.get<PRActivityResponse>(url);
     return response.data;
 }
 
@@ -93,7 +129,7 @@ export async function getCurrentUserId() {
 
 console.time();
 const sums = new Map<string, number>();
-const userId =  await getCurrentUserId();
+const userId = await getCurrentUserId();
 const myPrs: prTag[] = [];
 
 console.log('getting my pull requests');
@@ -142,8 +178,26 @@ const myComments = allComments.filter((x) => x.uuid == userId);
 const distinctPrsCommentedOn = new Set(myComments.map((x) => x.prId));
 const myTotalComments = myComments.length;
 
-console.log(allComments.length);
-console.log(new Set(allComments.map((x) => x.uuid)));
+const approvedByMePrs = (
+    await Promise.all(
+        Array.from(repoIdsOfReposIContributedTo).map((repoId) => getAllPrsIApproved(repoId, userId))
+    )
+).flatMap((x) => x);
+
+console.log('Test');
+const prsApprovedButNotCommentedOn = approvedByMePrs
+    .filter((x) => x)
+    .map((x) => {
+        if (!distinctPrsCommentedOn.has(x)) {
+            return x;
+        }
+    });
+console.log(
+    'NEW total PRs I reviewed',
+    prsApprovedButNotCommentedOn.length + distinctPrsCommentedOn.size
+);
+console.log(prsApprovedButNotCommentedOn);
+console.log('end');
 // output
 console.log('number of PRs reviewed', distinctPrsCommentedOn.size);
 console.log("total comments left on other people's pr's", myTotalComments);
