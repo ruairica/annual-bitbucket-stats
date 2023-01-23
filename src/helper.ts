@@ -21,3 +21,7 @@ export function toBase64(str: string): string {
 export function fullPrIdName(repoId: string, prId: number) {
     return `${repoId}_${prId}`;
 }
+
+export function isBranchOfInterest(branchName: string, branchesOfInterest: string[]): boolean {
+    return branchesOfInterest.some((b) => b.startsWith(branchName));
+}

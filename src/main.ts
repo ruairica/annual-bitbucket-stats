@@ -1,5 +1,6 @@
 import axios from 'axios';
 import pLimit from 'p-limit';
+import { isBranchOfInterest } from './helper';
 import { commentModel, diffNums, fullPrIdName, prTag, toBase64 } from './helper.js';
 import { PRActivityResponse } from './types/ApprovalResponse.js';
 import { DiffStat } from './types/DiffStat.js';
@@ -11,6 +12,7 @@ const limit = pLimit(100);
 const userName = 'ruairicaldwell';
 const appPassword = '';
 const workSpace = 'esosolutions';
+const mainBranches = ['develop', 'development', 'main', 'release']; // will check for pull requests being merged into these branches (uses startsWith for comparison)
 const year = 2022;
 
 //constants
@@ -138,17 +140,8 @@ for (const pr of await getAllPaginatedValuesPr(
         year + 1
     }-01-01T00:00:00-00:00`
 )) {
-    if (
-        pr.destination.branch.name == 'develop' ||
-        pr.destination.branch.name == 'main' ||
-        pr.destination.branch.name.startsWith('release') ||
-        pr.destination.branch.name == 'development'
-    ) {
-        // console.log('normal merge', pr.destination.branch.name);
-
+    if (isBranchOfInterest(pr.destination.branch.name, mainBranches)) {
         myPrs.push({ id: pr.id, repoId: pr.destination.repository.uuid });
-    } else {
-        // console.log('found-a-straggler', pr.destination.branch.name);
     }
 
     sums.set(pr.destination.repository.name, (sums.get(pr.destination.repository.name) ?? 0) + 1);
