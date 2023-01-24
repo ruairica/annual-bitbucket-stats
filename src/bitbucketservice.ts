@@ -24,11 +24,12 @@ export class bitbucketService {
 
     userId: string;
 
+    total = 0;
+    totalWithApproved = 0;
     // outputs
     numberOfPrsReviewed: number;
     totalCommentsLeftOnPrs: number;
-    linesAdded: number;
-    linesRemoved: number;
+    myDiffs: diffNums[] = [];
     sums = new Map<string, number>();
     repoIdsOfReposIContributedTo = new Set<string>();
     totalMergedPrs: number;
@@ -53,7 +54,7 @@ export class bitbucketService {
         )}`;
     }
 
-    public async setup() {
+    public async run() {
         this.userId = await this.getCurrentUserId();
 
         console.log('getting my pull requests');
@@ -70,10 +71,12 @@ export class bitbucketService {
     }
 
     public output() {
+        const linesAdded = this.myDiffs.reduce((a, b) => a + b.linesAdded, 0);
+        const linesRemoved = this.myDiffs.reduce((a, b) => a + b.linesRemoved, 0);
         console.log('total PRs I reviewed', this.numberOfPrsReviewed);
         console.log("total comments left on other people's pr's", this.totalCommentsLeftOnPrs);
-        console.log('total lines added:', this.linesAdded);
-        console.log('total lines removed:', this.linesRemoved);
+        console.log('total lines added:', linesAdded);
+        console.log('total lines removed:', linesRemoved);
         console.log('total pull requests:', this.totalMergedPrs);
         console.log('mergedPrs distribution', this.sums);
     }
@@ -113,15 +116,15 @@ export class bitbucketService {
                 this.limit(() => this.getDiffStatForPr(pullreq.id, pullreq.repoId))
             )
         );
-        this.linesAdded = diffs.reduce((a, b) => a + b.linesAdded, 0);
-        this.linesRemoved = diffs.reduce((a, b) => a + b.linesRemoved, 0);
+
+        this.myDiffs.push(...diffs);
     }
 
     private async getMyPullRequests() {
         for (const pr of await bitbucketService.getAllPaginatedValuesPr(
             `${this.baseUrl}/pullrequests/${this.userId}?q=state="MERGED" AND created_on > ${
                 this.year
-            }-01-01T00:00:00-00:00 AND created_on < ${this.year + 1}-01-01T00:00:00-00:00`
+            }-11-01T00:00:00-00:00 AND created_on < ${this.year + 1}-01-01T00:00:00-00:00`
         )) {
             if (isBranchOfInterest(pr.destination.branch.name, this.mainBranches)) {
                 this.myPrs.push({ id: pr.id, repoId: pr.destination.repository.uuid });
@@ -159,7 +162,7 @@ export class bitbucketService {
             this.workSpace
         }/${repoId}/pullrequests?q=state="MERGED" AND author.uuid != "${userId}" AND created_on > ${
             this.year
-        }-01-01T00:00:00-00:00 AND created_on < ${this.year + 1}-01-01T00:00:00-00:00`;
+        }-11-01T00:00:00-00:00 AND created_on < ${this.year + 1}-01-01T00:00:00-00:00`;
 
         const allPrs = await bitbucketService.getAllPaginatedValuesPr(initialRequest);
         const prActivityPromises = allPrs.map((pr) => {
@@ -170,15 +173,14 @@ export class bitbucketService {
             );
         });
 
-        const prActivitiesAll = await Promise.all(prActivityPromises);
-        const prActivies = prActivitiesAll.flatMap((x) => x.values);
+        const prActivies = (await Promise.all(prActivityPromises)).flatMap((x) => x.values);
+
+        console.log('total prActivities', prActivies.length);
         console.log(
-            JSON.stringify(
-                prActivies
-                    .filter((x) => x.approval && x.approval.user.uuid === userId)
-                    .map((x) => ({ repo: repoId, prId: x.pull_request.id }))
-            )
+            'total prActivities with an approval object',
+            prActivies.filter((x) => x.approval).length
         );
+
         return prActivies
             .filter((x) => x.approval && x.approval.user.uuid === userId)
             .map((x) => fullPrIdName(repoId, x.pull_request.id));
@@ -190,7 +192,7 @@ export class bitbucketService {
             this.workSpace
         }/${repoId}/pullrequests?q=state="MERGED" AND author.uuid != "${userId}" AND created_on > ${
             this.year
-        }-01-01T00:00:00-00:00 AND created_on < ${this.year + 1}-01-01T00:00:00-00:00`;
+        }-11-01T00:00:00-00:00 AND created_on < ${this.year + 1}-01-01T00:00:00-00:00`;
 
         const allPrs = await bitbucketService.getAllPaginatedValuesPr(initialRequest);
         let commentResponsePromises = allPrs.map((pr) => {

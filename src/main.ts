@@ -15,5 +15,5 @@ const service = new bitbucketService(
     mainBranches,
     asyncLimit
 );
-await service.setup();
+await service.run();
 service.output();
