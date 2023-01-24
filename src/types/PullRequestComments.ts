@@ -1,4 +1,4 @@
-import { User } from './UserPullRequestResponse.js';
+import { User } from './PullRequestResponse.js';
 
 export interface PullRequestCommentsResponse {
     values: Value[];

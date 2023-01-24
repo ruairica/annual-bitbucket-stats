@@ -13,6 +13,11 @@ export interface commentModel {
     prId: string;
 }
 
+export interface approver {
+    uuid: string;
+    prId: number;
+}
+
 export function toBase64(str: string): string {
     return Buffer.from(str).toString('base64');
 }

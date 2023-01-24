@@ -1,6 +1,7 @@
 import axios from 'axios';
 import pLimit, { LimitFunction } from 'p-limit';
 import {
+    approver,
     commentModel,
     diffNums,
     fullPrIdName,
@@ -11,7 +12,7 @@ import {
 import { PRActivityResponse } from './types/ActivityResponse.js';
 import { DiffStat } from './types/DiffStat.js';
 import { PullRequestCommentsResponse } from './types/PullRequestComments.js';
-import { PullRequestResponse } from './types/UserPullRequestResponse.js';
+import { PullRequestResponse } from './types/PullRequestResponse.js';
 import { UserResponse } from './types/UserResponse.js';
 export class bitbucketService {
     private baseUrl = 'https://api.bitbucket.org/2.0';
@@ -21,11 +22,11 @@ export class bitbucketService {
     private workSpace: string;
     private mainBranches: string[]; // will check for pull requests being merged into these branches (uses startsWith for comparison)
     private year: number;
+    private distinctPrsCommentedOn: number;
 
     userId: string;
+    dateRange = '';
 
-    total = 0;
-    totalWithApproved = 0;
     // outputs
     numberOfPrsReviewed: number;
     totalCommentsLeftOnPrs: number;
@@ -47,6 +48,9 @@ export class bitbucketService {
         this.mainBranches = mainBranches;
         this.year = year;
         this.limit = pLimit(asyncLimit);
+        this.dateRange = `created_on > ${this.year}-11-01T00:00:00-00:00 AND created_on < ${
+            this.year + 1
+        }-01-01T00:00:00-00:00`;
 
         // set header for api requests
         axios.defaults.headers.common['Authorization'] = `Basic ${toBase64(
@@ -106,6 +110,8 @@ export class bitbucketService {
             (x) => x && !distinctPrsCommentedOn.has(x)
         );
 
+        // console.log(prsApprovedButNotCommentedOn.length, distinctPrsCommentedOn);
+        this.distinctPrsCommentedOn = distinctPrsCommentedOn.size;
         this.numberOfPrsReviewed =
             prsApprovedButNotCommentedOn.length + distinctPrsCommentedOn.size;
     }
@@ -122,9 +128,7 @@ export class bitbucketService {
 
     private async getMyPullRequests() {
         for (const pr of await bitbucketService.getAllPaginatedValuesPr(
-            `${this.baseUrl}/pullrequests/${this.userId}?q=state="MERGED" AND created_on > ${
-                this.year
-            }-11-01T00:00:00-00:00 AND created_on < ${this.year + 1}-01-01T00:00:00-00:00`
+            `${this.baseUrl}/pullrequests/${this.userId}?q=state="MERGED" AND ${this.dateRange}`
         )) {
             if (isBranchOfInterest(pr.destination.branch.name, this.mainBranches)) {
                 this.myPrs.push({ id: pr.id, repoId: pr.destination.repository.uuid });
@@ -135,7 +139,7 @@ export class bitbucketService {
             }
         }
 
-        this.totalMergedPrs = [...this.sums.values()].reduce((a, b) => a + b, 0);
+        this.totalMergedPrs = [...this.sums.values()].reduce((sum, cur) => sum + cur, 0);
     }
 
     // given a url that returns pull requests, returns all the pull requests as a list
@@ -158,40 +162,26 @@ export class bitbucketService {
 
     // returns list of all PRs I approved
     private async getAllPrsIApproved(repoId: string, userId: string) {
-        const initialRequest = `${this.baseUrl}/repositories/${
-            this.workSpace
-        }/${repoId}/pullrequests?q=state="MERGED" AND author.uuid != "${userId}" AND created_on > ${
-            this.year
-        }-11-01T00:00:00-00:00 AND created_on < ${this.year + 1}-01-01T00:00:00-00:00`;
+        const initialRequest = `${this.baseUrl}/repositories/${this.workSpace}/${repoId}/pullrequests?q=state="MERGED" AND author.uuid != "${userId}" AND ${this.dateRange}`;
 
         const allPrs = await bitbucketService.getAllPaginatedValuesPr(initialRequest);
         const prActivityPromises = allPrs.map((pr) => {
             return this.limit(() =>
-                this.getPrActivity(
+                this.getPrApproversWrapper(
                     `${this.baseUrl}/repositories/${this.workSpace}/${pr.destination.repository.uuid}/pullrequests/${pr.id}/activity`
                 )
             );
         });
 
         const allPrAct = await Promise.all(prActivityPromises);
-        const prActivies = allPrAct.flatMap((x) => x.values);
+        const prActivies = allPrAct.flatMap((x) => x);
 
-        console.log('total prActivities', prActivies.length);
-        console.log('total prActivities with a next', allPrAct.filter((x) => x.next).length);
-        console.log(allPrAct.map((x) => x.next));
-
-        return prActivies
-            .filter((x) => x.approval && x.approval.user.uuid === userId)
-            .map((x) => fullPrIdName(repoId, x.pull_request.id));
+        return prActivies.map((x) => fullPrIdName(repoId, x.prId));
     }
 
     // returns a lists of all comments on all PR's in a repo that were not authored by the current
     private async getAllCommentsForExcludingMyPrs(repoId: string, userId: string) {
-        const initialRequest = `${this.baseUrl}/repositories/${
-            this.workSpace
-        }/${repoId}/pullrequests?q=state="MERGED" AND author.uuid != "${userId}" AND created_on > ${
-            this.year
-        }-11-01T00:00:00-00:00 AND created_on < ${this.year + 1}-01-01T00:00:00-00:00`;
+        const initialRequest = `${this.baseUrl}/repositories/${this.workSpace}/${repoId}/pullrequests?q=state="MERGED" AND author.uuid != "${userId}" AND ${this.dateRange}`;
 
         const allPrs = await bitbucketService.getAllPaginatedValuesPr(initialRequest);
         let commentResponsePromises = allPrs.map((pr) => {
@@ -233,9 +223,35 @@ export class bitbucketService {
         return response.data;
     }
 
-    private async getPrActivity(url: string) {
+    private async getPrApproversWrapper(url: string): Promise<approver[]> {
+        const approvers: approver[] = [];
+        await this.getPrApprovers(url, approvers);
+        return approvers.filter((x) => x.uuid === this.userId);
+    }
+
+    private async getPrApprovers(url: string, approvers: approver[]): Promise<approver[]> {
         const response = await axios.get<PRActivityResponse>(url);
-        return response.data;
+        const approvalsValue = response.data.values.filter((x) => x.approval);
+
+        if (approvalsValue) {
+            approvers.push(
+                ...approvalsValue.map((x) => ({
+                    uuid: x.approval.user.uuid,
+                    prId: x.pull_request.id,
+                }))
+            );
+        }
+
+        if (approvers.some((x) => x.uuid === this.userId)) {
+            return approvers;
+        }
+
+        // this is a bit unneeded as the approval is very likely to be on the first page
+        if (response.data.next) {
+            return await this.getPrApprovers(response.data.next, approvers);
+        }
+
+        return approvers;
     }
 
     // returns how many lines were added / removed for a specific PR
@@ -245,8 +261,8 @@ export class bitbucketService {
 
         // this has pagination but has size of 500 files per page so probably unneeded
         return {
-            linesAdded: response.data.values.reduce((a, b) => a + b.lines_added, 0),
-            linesRemoved: response.data.values.reduce((a, b) => a + b.lines_removed, 0),
+            linesAdded: response.data.values.reduce((sum, cur) => sum + cur.lines_added, 0),
+            linesRemoved: response.data.values.reduce((sum, cur) => sum + cur.lines_removed, 0),
         };
     }
 
