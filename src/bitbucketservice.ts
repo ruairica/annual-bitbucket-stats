@@ -1,10 +1,13 @@
 import axios from 'axios';
+import chalk from 'chalk';
+import { createSpinner } from 'nanospinner';
 import pLimit, { LimitFunction } from 'p-limit';
 import {
     approver,
     commentModel,
     diffNums,
     fullPrIdName,
+    getMedian,
     isBranchOfInterest,
     prTag,
     toBase64,
@@ -22,7 +25,7 @@ export class bitbucketService {
     private workSpace: string;
     private mainBranches: string[]; // will check for pull requests being merged into these branches (uses startsWith for comparison)
     private year: number;
-    private distinctPrsCommentedOn: number;
+    private prsCommentedOn: number;
 
     userId: string;
     dateRange = '';
@@ -48,7 +51,7 @@ export class bitbucketService {
         this.mainBranches = mainBranches;
         this.year = year;
         this.limit = pLimit(asyncLimit);
-        this.dateRange = `created_on > ${this.year}-11-01T00:00:00-00:00 AND created_on < ${
+        this.dateRange = `created_on > ${this.year}-08-01T00:00:00-00:00 AND created_on < ${
             this.year + 1
         }-01-01T00:00:00-00:00`;
 
@@ -59,33 +62,100 @@ export class bitbucketService {
     }
 
     public async run() {
-        this.userId = await this.getCurrentUserId();
-
-        console.log('getting my pull requests');
+        console.time('Time taken to retrieve info');
+        await this.getUserInfo();
         await this.getMyPullRequests();
-
-        console.log('getting diffs');
-
         await this.getDiffsForMyPullRequests();
-
-        this.repoIdsOfReposIContributedTo = new Set(this.myPrs.map((x) => x.repoId));
-
-        console.log('getting comments');
         await this.getMyPullRequestReviewStats();
+        console.timeEnd();
     }
 
     public output() {
+        console.log(chalk.inverse(`In ${this.year}...`));
+
+        console.log(
+            chalk.whiteBright(`You merged`),
+            chalk.blue(this.numberOfPrsReviewed),
+            chalk.whiteBright('pull requests across'),
+            chalk.blue([...this.sums.keys()].length),
+            chalk.whiteBright('repositories')
+        );
+
+        this.sums.forEach((v, k) => console.log(chalk.whiteBright(`${k} =>`), chalk.blue(v)));
+
+        console.log('\n');
+
         const linesAdded = this.myDiffs.reduce((a, b) => a + b.linesAdded, 0);
         const linesRemoved = this.myDiffs.reduce((a, b) => a + b.linesRemoved, 0);
-        console.log('total PRs I reviewed', this.numberOfPrsReviewed);
-        console.log("total comments left on other people's pr's", this.totalCommentsLeftOnPrs);
-        console.log('total lines added:', linesAdded);
-        console.log('total lines removed:', linesRemoved);
-        console.log('total pull requests:', this.totalMergedPrs);
-        console.log('mergedPrs distribution', this.sums);
+        console.log(
+            chalk.whiteBright('In these pull requests you added'),
+            chalk.blue(linesAdded),
+            chalk.whiteBright('lines of code, and removed'),
+            chalk.blue(linesRemoved),
+            chalk.whiteBright(
+                `lines of code over the year. (This currently includes all files, even files that might be auto-generated)`
+            )
+        );
+        console.log(
+            chalk.whiteBright(`That's a mean average of`),
+            chalk.blue(`+${Math.floor(linesAdded / 12)}/-${Math.floor(linesRemoved / 12)}`),
+            chalk.whiteBright(`lines of code per month`)
+        );
+
+        console.log(
+            chalk.whiteBright('Your mean average lines added per PR is'),
+            chalk.blue(`${Math.floor(linesAdded / this.myDiffs.length)}`)
+        );
+
+        console.log(
+            chalk.whiteBright('Your mean average lines removed per PR is'),
+            chalk.blue(`${Math.floor(linesRemoved / this.myDiffs.length)}`)
+        );
+
+        console.log(
+            chalk.whiteBright('Your median average lines added per PR is'),
+            chalk.blue(`${getMedian(this.myDiffs.map((x) => x.linesAdded))}`)
+        );
+
+        console.log(
+            chalk.whiteBright('Your median average lines removed per PR is'),
+            chalk.blue(`${getMedian(this.myDiffs.map((x) => x.linesRemoved))}`)
+        );
+
+        console.log('\n');
+
+        console.log(
+            chalk.whiteBright('You reviewed (commented on or approved)'),
+            chalk.blue(this.numberOfPrsReviewed),
+            chalk.whiteBright('pull requests in total, you commented on'),
+            chalk.blue(this.prsCommentedOn),
+            chalk.whiteBright('of these pull requests')
+        );
+
+        console.log(
+            chalk.whiteBright(`You left a total of`),
+            chalk.blue(this.totalCommentsLeftOnPrs),
+            chalk.whiteBright(`comments across these pull requests`)
+        );
+
+        console.log(
+            chalk.whiteBright(`On average you left`),
+            chalk.blue(
+                `${(
+                    Math.round((this.totalCommentsLeftOnPrs / this.numberOfPrsReviewed) * 100) / 100
+                ).toFixed(1)}`
+            ),
+            chalk.whiteBright(`comments per pull request you reviewed`)
+        );
+    }
+
+    private async getUserInfo() {
+        const user = await this.getCurrentUser();
+        this.userId = user.uuid;
     }
 
     private async getMyPullRequestReviewStats() {
+        const spinner = createSpinner('Getting all the pull requests you reviewed').start();
         const allComments = (
             await Promise.all(
                 Array.from(this.repoIdsOfReposIContributedTo).map((repoId) =>
@@ -110,13 +180,15 @@ export class bitbucketService {
             (x) => x && !distinctPrsCommentedOn.has(x)
         );
 
-        // console.log(prsApprovedButNotCommentedOn.length, distinctPrsCommentedOn);
-        this.distinctPrsCommentedOn = distinctPrsCommentedOn.size;
+        this.prsCommentedOn = distinctPrsCommentedOn.size;
         this.numberOfPrsReviewed =
             prsApprovedButNotCommentedOn.length + distinctPrsCommentedOn.size;
+        spinner.success({ text: 'Sucessfully retrieved all the pull requests you reviewed' });
     }
 
     private async getDiffsForMyPullRequests() {
+        const spinner = createSpinner('Getting diffs for your pull requests').start();
+
         const diffs = await Promise.all(
             this.myPrs.map((pullreq) =>
                 this.limit(() => this.getDiffStatForPr(pullreq.id, pullreq.repoId))
@@ -124,9 +196,11 @@ export class bitbucketService {
         );
 
         this.myDiffs.push(...diffs);
+        spinner.success({ text: 'Sucessfully retrieved diffs' });
     }
 
     private async getMyPullRequests() {
+        const spinner = createSpinner('Retrieving all your merged pull requests.').start();
         for (const pr of await bitbucketService.getAllPaginatedValuesPr(
             `${this.baseUrl}/pullrequests/${this.userId}?q=state="MERGED" AND ${this.dateRange}`
         )) {
@@ -139,7 +213,12 @@ export class bitbucketService {
             }
         }
 
+        this.repoIdsOfReposIContributedTo = new Set(this.myPrs.map((x) => x.repoId));
         this.totalMergedPrs = [...this.sums.values()].reduce((sum, cur) => sum + cur, 0);
+
+        spinner.success({
+            text: 'Successfully retrieved all of your merged pull requests',
+        });
     }
 
     // given a url that returns pull requests, returns all the pull requests as a list
@@ -179,7 +258,7 @@ export class bitbucketService {
         return prActivies.map((x) => fullPrIdName(repoId, x.prId));
     }
 
-    // returns a lists of all comments on all PR's in a repo that were not authored by the current
+    // returns a lists of all comments on all PR's in a repo that were not authoblue by the current
     private async getAllCommentsForExcludingMyPrs(
         repoId: string,
         userId: string
@@ -246,14 +325,13 @@ export class bitbucketService {
             );
         }
 
-        if (approvers.some((x) => x.uuid === this.userId)) {
-            return approvers;
-        }
-
-        // this is a bit unneeded as the approval is very likely to be on the first page
-        if (response.data.next) {
-            return await this.getPrApprovers(response.data.next, approvers);
-        }
+        // this is a bit unneeded as the approval is very likely to be on the first page, makes no difference for my personal stats
+        // if (approvers.some((x) => x.uuid === this.userId)) {
+        //     return approvers;
+        // }
+        // if (response.data.next) {
+        //     return await this.getPrApprovers(response.data.next, approvers);
+        // }
 
         return approvers;
     }
@@ -270,8 +348,10 @@ export class bitbucketService {
         };
     }
 
-    private async getCurrentUserId(): Promise<string> {
+    private async getCurrentUser(): Promise<UserResponse> {
+        const spinner = createSpinner('Retrieving user information').start();
         const response = await axios.get<UserResponse>(`${this.baseUrl}/user`);
-        return response.data.uuid;
+        spinner.success({ text: 'Sucessfully retrieved necessary user information' });
+        return response.data;
     }
 }
