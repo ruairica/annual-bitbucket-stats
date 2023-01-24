@@ -150,8 +150,10 @@ export class bitbucketService {
     }
 
     private async getUserInfo() {
+        const spinner = createSpinner('Retrieving user information').start();
         const user = await this.getCurrentUser();
         this.userId = user.uuid;
+        spinner.success({ text: 'Sucessfully retrieved necessary user information' });
     }
 
     private async getMyPullRequestReviewStats() {
@@ -349,9 +351,7 @@ export class bitbucketService {
     }
 
     private async getCurrentUser(): Promise<UserResponse> {
-        const spinner = createSpinner('Retrieving user information').start();
         const response = await axios.get<UserResponse>(`${this.baseUrl}/user`);
-        spinner.success({ text: 'Sucessfully retrieved necessary user information' });
         return response.data;
     }
 }
