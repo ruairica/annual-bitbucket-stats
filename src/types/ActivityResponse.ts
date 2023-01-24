@@ -3,6 +3,7 @@
 export interface PRActivityResponse {
     values: Value[];
     pagelen: number;
+    next: string;
 }
 
 export interface Value {

@@ -8,7 +8,7 @@ import {
     prTag,
     toBase64,
 } from './helper.js';
-import { PRActivityResponse } from './types/ApprovalResponse.js';
+import { PRActivityResponse } from './types/ActivityResponse.js';
 import { DiffStat } from './types/DiffStat.js';
 import { PullRequestCommentsResponse } from './types/PullRequestComments.js';
 import { PullRequestResponse } from './types/UserPullRequestResponse.js';
@@ -173,13 +173,12 @@ export class bitbucketService {
             );
         });
 
-        const prActivies = (await Promise.all(prActivityPromises)).flatMap((x) => x.values);
+        const allPrAct = await Promise.all(prActivityPromises);
+        const prActivies = allPrAct.flatMap((x) => x.values);
 
         console.log('total prActivities', prActivies.length);
-        console.log(
-            'total prActivities with an approval object',
-            prActivies.filter((x) => x.approval).length
-        );
+        console.log('total prActivities with a next', allPrAct.filter((x) => x.next).length);
+        console.log(allPrAct.map((x) => x.next));
 
         return prActivies
             .filter((x) => x.approval && x.approval.user.uuid === userId)
