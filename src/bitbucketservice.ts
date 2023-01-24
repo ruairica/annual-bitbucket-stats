@@ -62,12 +62,13 @@ export class bitbucketService {
     }
 
     public async run() {
-        console.time('Time taken to retrieve info');
+        const timeLabel = 'Time taken to retrieve info';
+        console.time(timeLabel);
         await this.getUserInfo();
         await this.getMyPullRequests();
         await this.getDiffsForMyPullRequests();
         await this.getMyPullRequestReviewStats();
-        console.timeEnd();
+        console.timeEnd(timeLabel);
     }
 
     public output() {
