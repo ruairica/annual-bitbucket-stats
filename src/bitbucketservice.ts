@@ -12,8 +12,7 @@ import {
 import { PRActivityResponse } from './types/ActivityResponse.js';
 import { DiffStat } from './types/DiffStat.js';
 import { PullRequestCommentsResponse } from './types/PullRequestComments.js';
-import { PullRequestItem } from './types/PullRequestResponse';
-import { PullRequestResponse } from './types/PullRequestResponse.js';
+import { PullRequestItem, PullRequestResponse } from './types/PullRequestResponse.js';
 import { UserResponse } from './types/UserResponse.js';
 export class bitbucketService {
     private baseUrl = 'https://api.bitbucket.org/2.0';
@@ -199,8 +198,7 @@ export class bitbucketService {
         let commentResponses = await Promise.all(commentResponsePromises);
         const comments = commentResponses.flatMap((x) => x.values);
 
-
-        // doing a bit of a bfs through the nexts here instead of getting all pages at once like in getAllPaginatedValuesPr for some reason
+        // could probably refactor this whole thing to be more like getAllPaginatedValuesPr
         let nexts = commentResponses.filter((x) => x.next).map((x) => x.next);
         while (nexts.length > 0) {
             commentResponsePromises = [];
