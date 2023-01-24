@@ -12,6 +12,7 @@ import {
 import { PRActivityResponse } from './types/ActivityResponse.js';
 import { DiffStat } from './types/DiffStat.js';
 import { PullRequestCommentsResponse } from './types/PullRequestComments.js';
+import { PullRequestItem } from './types/PullRequestResponse';
 import { PullRequestResponse } from './types/PullRequestResponse.js';
 import { UserResponse } from './types/UserResponse.js';
 export class bitbucketService {
@@ -143,7 +144,7 @@ export class bitbucketService {
     }
 
     // given a url that returns pull requests, returns all the pull requests as a list
-    private static async getAllPaginatedValuesPr(url: string) {
+    private static async getAllPaginatedValuesPr(url: string): Promise<PullRequestItem[]> {
         const limit = pLimit(100);
         const responseData: PullRequestResponse[] = [];
         const response = await axios.get<PullRequestResponse>(url);
@@ -161,7 +162,7 @@ export class bitbucketService {
     }
 
     // returns list of all PRs I approved
-    private async getAllPrsIApproved(repoId: string, userId: string) {
+    private async getAllPrsIApproved(repoId: string, userId: string): Promise<string[]> {
         const initialRequest = `${this.baseUrl}/repositories/${this.workSpace}/${repoId}/pullrequests?q=state="MERGED" AND author.uuid != "${userId}" AND ${this.dateRange}`;
 
         const allPrs = await bitbucketService.getAllPaginatedValuesPr(initialRequest);
@@ -180,7 +181,10 @@ export class bitbucketService {
     }
 
     // returns a lists of all comments on all PR's in a repo that were not authored by the current
-    private async getAllCommentsForExcludingMyPrs(repoId: string, userId: string) {
+    private async getAllCommentsForExcludingMyPrs(
+        repoId: string,
+        userId: string
+    ): Promise<commentModel[]> {
         const initialRequest = `${this.baseUrl}/repositories/${this.workSpace}/${repoId}/pullrequests?q=state="MERGED" AND author.uuid != "${userId}" AND ${this.dateRange}`;
 
         const allPrs = await bitbucketService.getAllPaginatedValuesPr(initialRequest);
@@ -195,6 +199,8 @@ export class bitbucketService {
         let commentResponses = await Promise.all(commentResponsePromises);
         const comments = commentResponses.flatMap((x) => x.values);
 
+
+        // doing a bit of a bfs through the nexts here instead of getting all pages at once like in getAllPaginatedValuesPr for some reason
         let nexts = commentResponses.filter((x) => x.next).map((x) => x.next);
         while (nexts.length > 0) {
             commentResponsePromises = [];
@@ -218,7 +224,7 @@ export class bitbucketService {
         );
     }
 
-    private async getPrComments(url: string) {
+    private async getPrComments(url: string): Promise<PullRequestCommentsResponse> {
         const response = await axios.get<PullRequestCommentsResponse>(url);
         return response.data;
     }
@@ -266,7 +272,7 @@ export class bitbucketService {
         };
     }
 
-    private async getCurrentUserId() {
+    private async getCurrentUserId(): Promise<string> {
         const response = await axios.get<UserResponse>(`${this.baseUrl}/user`);
         return response.data.uuid;
     }
