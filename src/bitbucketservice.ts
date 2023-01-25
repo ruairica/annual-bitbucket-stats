@@ -128,7 +128,9 @@ export class bitbucketService {
         console.log(
             chalk.whiteBright('You reviewed (commented on or approved)'),
             chalk.blue(this.numberOfPrsReviewed),
-            chalk.whiteBright('pull requests in total, you commented on'),
+            chalk.whiteBright(
+                'pull requests in total (checked across all the repositories you contributed to), you commented on'
+            ),
             chalk.blue(this.prsCommentedOn),
             chalk.whiteBright('of these pull requests')
         );

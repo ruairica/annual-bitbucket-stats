@@ -1,6 +1,6 @@
 import { bitbucketService } from './bitbucketService.js';
 
-const asyncLimit = 100; // number of promises that will be resolved at once
+const asyncLimit = 100; // number of promises that will be resolved at once, seems to make little difference in performance.
 const userName = 'ruairicaldwell';
 const appPassword = '';
 const workSpace = 'esosolutions';
