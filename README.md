@@ -1,8 +1,21 @@
-getting annual git statistics from bitbucket api
+## Gather your annual statistics on Bitbucket
 
-Limitations: There is a rate limit of 1000 requests per hour on certain resources from the Bitbucket API so you may only be able to run this program a couple of times before being rate limited (it will error out).
-This is mainly because there isn't an easy to way to get all the pull requests a user reviewed (commented on/approved).
-TODO
-add comments on where to create app password/ get username
-Add error handling
-Make this a package runnable from the command line.
+Includes information about pull requests you have made as well as pull requests you reviewed.
+
+### Getting started
+
+1. Clone project
+2. run `npm install`
+3. Open `main.ts`
+    1. On line 4 insert your Bitbucket username (can be located on [this](https://bitbucket.org/account/settings/) page)
+    2. On line 5 insert an app password (view/create app passwords [here](https://bitbucket.org/account/settings/app-passwords/))
+    3. On line 6 insert your work space name
+    4. On line 7 insert the branches which you care about merges into, these are compared by startsWith, eg. inserting `release` will check for pull requests to any branch that starts with the word `release`
+    5. On line 8 insert the year you want to get the information for
+4. run `npm run build`
+5. cd into the `dist` folder and run `node main.js`
+
+TODO:
+
+-   Add error handling
+-   Make this a package runnable from the command line.
