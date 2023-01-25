@@ -153,14 +153,14 @@ export class bitbucketService {
     }
 
     private async getUserInfo() {
-        const spinner = createSpinner('Retrieving user information').start();
+        const spinner = createSpinner('Getting user information').start();
         const user = await this.getCurrentUser();
         this.userId = user.uuid;
         spinner.success({ text: 'Sucessfully retrieved necessary user information' });
     }
 
     private async getMyPullRequestReviewStats() {
-        const spinner = createSpinner('Getting all the pull requests you reviewed').start();
+        const spinner = createSpinner('Getting all the pull requests you reviewed (this might take a minute)').start();
         const allComments = (
             await Promise.all(
                 Array.from(this.repoIdsOfReposIContributedTo).map((repoId) =>
@@ -205,7 +205,7 @@ export class bitbucketService {
     }
 
     private async getMyPullRequests() {
-        const spinner = createSpinner('Retrieving all your merged pull requests.').start();
+        const spinner = createSpinner('Getting all your merged pull requests.').start();
         for (const pr of await bitbucketService.getAllPaginatedValuesPr(
             `${this.baseUrl}/pullrequests/${this.userId}?q=state="MERGED" AND ${this.dateRange}`
         )) {
