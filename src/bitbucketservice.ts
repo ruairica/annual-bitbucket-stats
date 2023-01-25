@@ -27,17 +27,17 @@ export class bitbucketService {
     private year: number;
     private prsCommentedOn: number;
 
-    userId: string;
-    dateRange = '';
+    private userId: string;
+    private dateRange = '';
 
     // outputs
-    numberOfPrsReviewed: number;
-    totalCommentsLeftOnPrs: number;
-    myDiffs: diffNums[] = [];
-    sums = new Map<string, number>();
-    repoIdsOfReposIContributedTo = new Set<string>();
-    totalMergedPrs: number;
-    myPrs: prTag[] = [];
+    private numberOfPrsReviewed: number;
+    private totalCommentsLeftOnPrs: number;
+    private myDiffs: diffNums[] = [];
+    private sums = new Map<string, number>();
+    private repoIdsOfReposIContributedTo = new Set<string>();
+    private totalMergedPrs: number;
+    private myPrs: prTag[] = [];
 
     constructor(
         userName: string,
@@ -160,7 +160,9 @@ export class bitbucketService {
     }
 
     private async getMyPullRequestReviewStats() {
-        const spinner = createSpinner('Getting all the pull requests you reviewed (this might take a minute)').start();
+        const spinner = createSpinner(
+            'Getting all the pull requests you reviewed (this might take a minute)'
+        ).start();
         const allComments = (
             await Promise.all(
                 Array.from(this.repoIdsOfReposIContributedTo).map((repoId) =>
