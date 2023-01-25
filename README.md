@@ -1,6 +1,6 @@
-## Gather your annual statistics on Bitbucket
+## Your annual statistics from Bitbucket
 
-Includes information about pull requests you have made as well as pull requests you reviewed.
+Displays useful information about pull requests you have made as well as pull requests you reviewed.
 
 ### Getting started
 
