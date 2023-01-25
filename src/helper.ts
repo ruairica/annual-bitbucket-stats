@@ -22,7 +22,7 @@ export function toBase64(str: string): string {
     return Buffer.from(str).toString('base64');
 }
 
-// combines PR id and repod id to a string
+// combines pr id and repo id to a string
 export function fullPrIdName(repoId: string, prId: number) {
     return `${repoId}_${prId}`;
 }

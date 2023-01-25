@@ -51,7 +51,7 @@ export class bitbucketService {
         this.mainBranches = mainBranches;
         this.year = year;
         this.limit = pLimit(asyncLimit);
-        this.dateRange = `created_on > ${this.year}-08-01T00:00:00-00:00 AND created_on < ${
+        this.dateRange = `created_on > ${this.year}-00-01T00:00:00-00:00 AND created_on < ${
             this.year + 1
         }-01-01T00:00:00-00:00`;
 
@@ -71,12 +71,12 @@ export class bitbucketService {
         console.timeEnd(timeLabel);
     }
 
-    public output() {
+    public printOutput() {
         console.log(chalk.inverse(`In ${this.year}...`));
 
         console.log(
             chalk.whiteBright(`You merged`),
-            chalk.blue(this.numberOfPrsReviewed),
+            chalk.blue(this.totalMergedPrs),
             chalk.whiteBright('pull requests across'),
             chalk.blue([...this.sums.keys()].length),
             chalk.whiteBright('repositories')
@@ -161,8 +161,9 @@ export class bitbucketService {
 
     private async getMyPullRequestReviewStats() {
         const spinner = createSpinner(
-            'Getting all the pull requests you reviewed (this might take a minute)'
+            'Getting all the pull requests you reviewed (this might take a minute...)'
         ).start();
+
         const allComments = (
             await Promise.all(
                 Array.from(this.repoIdsOfReposIContributedTo).map((repoId) =>
@@ -332,7 +333,7 @@ export class bitbucketService {
             );
         }
 
-        // this is a bit unneeded as the approval is very likely to be on the first page, makes no difference for my personal stats
+        // this is a bit unneeded as the approval is very likely to be on the first page, makes no difference for my personal stats but may for others
         // if (approvers.some((x) => x.uuid === this.userId)) {
         //     return approvers;
         // }
