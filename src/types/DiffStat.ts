@@ -1,12 +1,10 @@
-export interface DiffStat {
-    values: Value[];
-    pagelen: number;
-    size: number;
-    page: number;
-    next: string;
-}
+import { apiResponseValue, paginatedResponse } from '../helpers.js';
 
-export interface Value {
+export type diffStatResponse = paginatedResponse<diff>;
+
+export type diff = diffItem & apiResponseValue;
+
+export interface diffItem {
     type: string;
     lines_added: number;
     lines_removed: number;

@@ -1,14 +1,11 @@
+import { apiResponseValue, paginatedResponse } from '../helpers.js';
 import { User } from './PullRequestResponse.js';
 
-export interface PullRequestCommentsResponse {
-    values: Value[];
-    pagelen: number;
-    size: number;
-    page: number;
-    next: string;
-}
+export type PullRequestCommentsResponse = paginatedResponse<comment>;
 
-export interface Value {
+export type comment = commentItem & apiResponseValue;
+
+export interface commentItem {
     id: number;
     created_on: string;
     updated_on: string;

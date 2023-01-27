@@ -1,12 +1,10 @@
-export interface PullRequestResponse {
-    values: PullRequestItem[];
-    pagelen: number;
-    size: number;
-    page: number;
-    next: string;
-}
+import { apiResponseValue, paginatedResponse } from '../helpers.js';
 
-export interface PullRequestItem {
+export type PullRequestResponse = paginatedResponse<pullRequest>;
+
+export type pullRequest = pullRequestItem & apiResponseValue;
+
+export interface pullRequestItem {
     comment_count: number;
     task_count: number;
     type: string;

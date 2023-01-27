@@ -3,19 +3,21 @@ import chalk from 'chalk';
 import { createSpinner } from 'nanospinner';
 import pLimit, { LimitFunction } from 'p-limit';
 import {
+    apiResponseValue,
     approver,
     commentModel,
     diffNums,
     fullPrIdName,
     getMedian,
     isBranchOfInterest,
+    paginatedResponse,
     prTag,
     toBase64,
-} from './helper.js';
+} from './helpers.js';
 import { PRActivityResponse } from './types/ActivityResponse.js';
-import { DiffStat } from './types/DiffStat.js';
-import { PullRequestCommentsResponse } from './types/PullRequestComments.js';
-import { PullRequestItem, PullRequestResponse } from './types/PullRequestResponse.js';
+import { diffStatResponse } from './types/DiffStat.js';
+import { comment, PullRequestCommentsResponse } from './types/PullRequestComments.js';
+import { pullRequest } from './types/PullRequestResponse.js';
 import { UserResponse } from './types/UserResponse.js';
 export class bitbucketService {
     private baseUrl = 'https://api.bitbucket.org/2.0';
@@ -51,7 +53,7 @@ export class bitbucketService {
         this.mainBranches = mainBranches;
         this.year = year;
         this.limit = pLimit(asyncLimit);
-        this.dateRange = `created_on > ${this.year}-00-01T00:00:00-00:00 AND created_on < ${
+        this.dateRange = `created_on > ${this.year}-01-01T00:00:00-00:00 AND created_on < ${
             this.year + 1
         }-01-01T00:00:00-00:00`;
 
@@ -61,7 +63,7 @@ export class bitbucketService {
         )}`;
     }
 
-    public async run() {
+    run = async () => {
         const timeLabel = 'Time taken to retrieve info';
         console.time(timeLabel);
         await this.getUserInfo();
@@ -69,9 +71,9 @@ export class bitbucketService {
         await this.getDiffsForMyPullRequests();
         await this.getMyPullRequestReviewStats();
         console.timeEnd(timeLabel);
-    }
+    };
 
-    public printOutput() {
+    printOutput = () => {
         console.log(chalk.inverse(`In ${this.year}...`));
 
         console.log(
@@ -150,16 +152,16 @@ export class bitbucketService {
             ),
             chalk.whiteBright(`comments per pull request you reviewed`)
         );
-    }
+    };
 
-    private async getUserInfo() {
+    getUserInfo = async () => {
         const spinner = createSpinner('Getting user information').start();
         const user = await this.getCurrentUser();
         this.userId = user.uuid;
         spinner.success({ text: 'Sucessfully retrieved necessary user information' });
-    }
+    };
 
-    private async getMyPullRequestReviewStats() {
+    getMyPullRequestReviewStats = async () => {
         const spinner = createSpinner(
             'Getting all the pull requests you reviewed (this might take a minute...)'
         ).start();
@@ -192,9 +194,9 @@ export class bitbucketService {
         this.numberOfPrsReviewed =
             prsApprovedButNotCommentedOn.length + distinctPrsCommentedOn.size;
         spinner.success({ text: 'Sucessfully retrieved all the pull requests you reviewed' });
-    }
+    };
 
-    private async getDiffsForMyPullRequests() {
+    getDiffsForMyPullRequests = async () => {
         const spinner = createSpinner('Getting diffs for your pull requests').start();
 
         const diffs = await Promise.all(
@@ -205,11 +207,11 @@ export class bitbucketService {
 
         this.myDiffs.push(...diffs);
         spinner.success({ text: 'Sucessfully retrieved diffs' });
-    }
+    };
 
-    private async getMyPullRequests() {
+    getMyPullRequests = async () => {
         const spinner = createSpinner('Getting all your merged pull requests.').start();
-        for (const pr of await bitbucketService.getAllPaginatedValuesPr(
+        for (const pr of await this.getAllPaginatedValues<pullRequest>(
             `${this.baseUrl}/pullrequests/${this.userId}?q=state="MERGED" AND ${this.dateRange}`
         )) {
             if (isBranchOfInterest(pr.destination.branch.name, this.mainBranches)) {
@@ -227,31 +229,41 @@ export class bitbucketService {
         spinner.success({
             text: 'Successfully retrieved all of your merged pull requests',
         });
-    }
+    };
 
-    // given a url that returns pull requests, returns all the pull requests as a list
-    private static async getAllPaginatedValuesPr(url: string): Promise<PullRequestItem[]> {
+    // given a url that returns a paginated endpoint return all the values in one array
+    getAllPaginatedValues = async <T extends apiResponseValue>(url: string): Promise<T[]> => {
         const limit = pLimit(100);
-        const responseData: PullRequestResponse[] = [];
-        const response = await axios.get<PullRequestResponse>(url);
+        const responseData: paginatedResponse<T>[] = [];
+
+        // await the first response to see how many pages there is
+        const response = await axios.get<paginatedResponse<T>>(url);
         responseData.push(response.data);
 
         const promiseArray = [];
         const totalPages = Math.ceil(response.data.size / response.data.pagelen);
+
         for (let i = 2; i <= totalPages; i++) {
-            promiseArray.push(limit(() => axios.get<PullRequestResponse>(`${url}&page=${i}`)));
+            promiseArray.push(
+                limit(() =>
+                    axios.get<paginatedResponse<T>>(
+                        // inconsistent pagination syntax from their api
+                        `${url}${url.endsWith('comments') ? '?' : '&'}page=${i}`
+                    )
+                )
+            );
         }
         const resolvedPromises = await Promise.all(promiseArray);
         responseData.push(...resolvedPromises.map((x) => x.data));
 
         return responseData.flatMap((x) => x.values);
-    }
+    };
 
     // returns list of all PRs I approved
-    private async getAllPrsIApproved(repoId: string, userId: string): Promise<string[]> {
+    getAllPrsIApproved = async (repoId: string, userId: string): Promise<string[]> => {
         const initialRequest = `${this.baseUrl}/repositories/${this.workSpace}/${repoId}/pullrequests?q=state="MERGED" AND author.uuid != "${userId}" AND ${this.dateRange}`;
 
-        const allPrs = await bitbucketService.getAllPaginatedValuesPr(initialRequest);
+        const allPrs = await this.getAllPaginatedValues<pullRequest>(initialRequest);
         const prActivityPromises = allPrs.map((pr) => {
             return this.limit(() =>
                 this.getPrApproversWrapper(
@@ -264,42 +276,25 @@ export class bitbucketService {
         const prActivies = allPrAct.flatMap((x) => x);
 
         return prActivies.map((x) => fullPrIdName(repoId, x.prId));
-    }
+    };
 
     // returns a lists of all comments on all PR's in a repo that were not authoblue by the current
-    private async getAllCommentsForExcludingMyPrs(
+    getAllCommentsForExcludingMyPrs = async (
         repoId: string,
         userId: string
-    ): Promise<commentModel[]> {
+    ): Promise<commentModel[]> => {
         const initialRequest = `${this.baseUrl}/repositories/${this.workSpace}/${repoId}/pullrequests?q=state="MERGED" AND author.uuid != "${userId}" AND ${this.dateRange}`;
 
-        const allPrs = await bitbucketService.getAllPaginatedValuesPr(initialRequest);
-        let commentResponsePromises = allPrs.map((pr) => {
+        const allPrs = await this.getAllPaginatedValues<pullRequest>(initialRequest);
+        const commentPromises = allPrs.map((pr) => {
             return this.limit(() =>
-                this.getPrComments(
+                this.getAllPaginatedValues<comment>(
                     `${this.baseUrl}/repositories/${this.workSpace}/${pr.destination.repository.uuid}/pullrequests/${pr.id}/comments`
                 )
             );
         });
 
-        let commentResponses = await Promise.all(commentResponsePromises);
-        const comments = commentResponses.flatMap((x) => x.values);
-
-        // could probably refactor this whole thing to be more like getAllPaginatedValuesPr
-        let nexts = commentResponses.filter((x) => x.next).map((x) => x.next);
-        while (nexts.length > 0) {
-            commentResponsePromises = [];
-            commentResponses = [];
-
-            for (const next of nexts) {
-                commentResponsePromises.push(this.limit(() => this.getPrComments(next)));
-            }
-
-            commentResponses = await Promise.all(commentResponsePromises);
-            comments.push(...commentResponses.flatMap((x) => x.values));
-            nexts = commentResponses.filter((x) => x.next).map((x) => x.next);
-        }
-
+        const comments = (await Promise.all(commentPromises)).flatMap((x) => x);
         return comments.map(
             (x) =>
                 ({
@@ -307,20 +302,20 @@ export class bitbucketService {
                     prId: fullPrIdName(repoId, x.pullrequest.id),
                 } as commentModel)
         );
-    }
+    };
 
-    private async getPrComments(url: string): Promise<PullRequestCommentsResponse> {
+    getPrComments = async (url: string): Promise<PullRequestCommentsResponse> => {
         const response = await axios.get<PullRequestCommentsResponse>(url);
         return response.data;
-    }
+    };
 
-    private async getPrApproversWrapper(url: string): Promise<approver[]> {
+    getPrApproversWrapper = async (url: string): Promise<approver[]> => {
         const approvers: approver[] = [];
         await this.getPrApprovers(url, approvers);
         return approvers.filter((x) => x.uuid === this.userId);
-    }
+    };
 
-    private async getPrApprovers(url: string, approvers: approver[]): Promise<approver[]> {
+    getPrApprovers = async (url: string, approvers: approver[]): Promise<approver[]> => {
         const response = await axios.get<PRActivityResponse>(url);
         const approvalsValue = response.data.values.filter((x) => x.approval);
 
@@ -342,22 +337,22 @@ export class bitbucketService {
         // }
 
         return approvers;
-    }
+    };
 
     // returns how many lines were added / removed for a specific PR
-    private async getDiffStatForPr(prId: number, repoId: string): Promise<diffNums> {
+    getDiffStatForPr = async (prId: number, repoId: string): Promise<diffNums> => {
         const url = `${this.baseUrl}/repositories/${this.workSpace}/${repoId}/pullrequests/${prId}/diffstat`;
-        const response = await axios.get<DiffStat>(url);
+        const response = await axios.get<diffStatResponse>(url);
 
         // this has pagination but has size of 500 files per page so probably unneeded
         return {
             linesAdded: response.data.values.reduce((sum, cur) => sum + cur.lines_added, 0),
             linesRemoved: response.data.values.reduce((sum, cur) => sum + cur.lines_removed, 0),
         };
-    }
+    };
 
-    private async getCurrentUser(): Promise<UserResponse> {
+    getCurrentUser = async (): Promise<UserResponse> => {
         const response = await axios.get<UserResponse>(`${this.baseUrl}/user`);
         return response.data;
-    }
+    };
 }
