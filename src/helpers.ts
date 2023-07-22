@@ -1,3 +1,5 @@
+export type quarter = 'Q1' | 'Q2' | 'Q3' | 'Q4' | null;
+
 export interface prTag {
     id: number;
     repoId: string;
@@ -42,7 +44,7 @@ export const fullPrIdName = (repoId: string, prId: number) => {
 };
 
 export const isBranchOfInterest = (branchName: string, branchesOfInterest: string[]): boolean => {
-    return branchesOfInterest.some((b) => b.startsWith(branchName));
+    return branchesOfInterest.some((b) => branchName.startsWith(b));
 };
 
 export const getMedian = (arr: number[]): number => {

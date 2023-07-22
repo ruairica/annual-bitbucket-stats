@@ -12,11 +12,12 @@ import {
     isBranchOfInterest,
     paginatedResponse,
     prTag,
+    quarter,
     toBase64,
 } from './helpers.js';
 import { PRActivityResponse } from './types/ActivityResponse.js';
 import { diffStatResponse } from './types/DiffStat.js';
-import { comment, PullRequestCommentsResponse } from './types/PullRequestComments.js';
+import { PullRequestCommentsResponse, comment } from './types/PullRequestComments.js';
 import { pullRequest } from './types/PullRequestResponse.js';
 import { UserResponse } from './types/UserResponse.js';
 export class bitbucketService {
@@ -27,6 +28,7 @@ export class bitbucketService {
     private workSpace: string;
     private mainBranches: string[]; // will check for pull requests being merged into these branches (uses startsWith for comparison)
     private year: number;
+    private quarter: quarter;
     private prsCommentedOn: number;
 
     private userId: string;
@@ -46,21 +48,48 @@ export class bitbucketService {
         appPassword: string,
         workSpace: string,
         year: number,
+        quarter: quarter,
         mainBranches: string[],
         asyncLimit: number
     ) {
         this.workSpace = workSpace;
         this.mainBranches = mainBranches;
         this.year = year;
+        this.quarter = quarter;
         this.limit = pLimit(asyncLimit);
-        this.dateRange = `created_on > ${this.year}-01-01T00:00:00-00:00 AND created_on < ${
-            this.year + 1
-        }-01-01T00:00:00-00:00`;
+        this.dateRange = this.getDateRange();
+        console.log(this.dateRange);
 
         // set header for api requests
         axios.defaults.headers.common['Authorization'] = `Basic ${toBase64(
             `${userName}:${appPassword}`
         )}`;
+    }
+
+    private getDateRange(): string {
+        if (this.quarter === null) {
+            return `created_on > ${this.year}-01-01T00:00:00-00:00 AND created_on < ${
+                this.year + 1
+            }-01-01T00:00:00-00:00`;
+        }
+
+        if (this.quarter === 'Q4') {
+            return `created_on > ${this.year}-10-01T00:00:00-00:00 AND created_on < ${
+                this.year + 1
+            }-01-01T00:00:00-00:00`;
+        }
+
+        const quaterMap: Map<quarter, number> = new Map([
+            ['Q1', 1],
+            ['Q2', 4],
+            ['Q3', 7],
+        ]);
+
+        const startMonth = quaterMap.get(this.quarter);
+
+        return `created_on > ${this.year}-${startMonth}-01T00:00:00-00:00 AND created_on < ${
+            this.year
+        }-${startMonth + 3}-01T00:00:00-00:00`;
     }
 
     run = async () => {
@@ -74,14 +103,22 @@ export class bitbucketService {
     };
 
     printOutput = () => {
-        console.log(chalk.inverse(`In ${this.year}...`));
+        console.log(
+            chalk.inverse(`${this.year}`),
+            `${this.quarter ? '-' : ''}`,
+            chalk.inverse(`${this.quarter ?? ''}`)
+        );
 
         console.log(
             chalk.whiteBright(`You merged`),
             chalk.blue(this.totalMergedPrs),
             chalk.whiteBright('pull requests across'),
             chalk.blue([...this.sums.keys()].length),
-            chalk.whiteBright('repositories')
+            chalk.whiteBright(
+                `repositories, (only pull requests into branches that start with: ${this.mainBranches.join(
+                    ', '
+                )} are counted)`
+            )
         );
 
         this.sums.forEach((v, k) => console.log(chalk.whiteBright(`${k} =>`), chalk.blue(v)));
@@ -99,11 +136,14 @@ export class bitbucketService {
                 `lines of code over the year. (This currently includes all files, even files that might be auto-generated)`
             )
         );
-        console.log(
-            chalk.whiteBright(`That's a mean average of`),
-            chalk.blue(`+${Math.floor(linesAdded / 12)}/-${Math.floor(linesRemoved / 12)}`),
-            chalk.whiteBright(`lines of code per month`)
-        );
+
+        if (!this.quarter) {
+            console.log(
+                chalk.whiteBright(`That's a mean average of`),
+                chalk.blue(`+${Math.floor(linesAdded / 12)}/-${Math.floor(linesRemoved / 12)}`), // TODO update this for quarters
+                chalk.whiteBright(`lines of code per month`)
+            );
+        }
 
         console.log(
             chalk.whiteBright('Your mean average lines added per PR is'),
@@ -140,7 +180,7 @@ export class bitbucketService {
         console.log(
             chalk.whiteBright(`You left a total of`),
             chalk.blue(this.totalCommentsLeftOnPrs),
-            chalk.whiteBright(`comments across these pull requests`)
+            chalk.whiteBright(`comments on these pull requests`)
         );
 
         console.log(
@@ -210,15 +250,21 @@ export class bitbucketService {
     };
 
     getMyPullRequests = async () => {
+        const prPrint = [];
         const spinner = createSpinner('Getting all your merged pull requests.').start();
         for (const pr of await this.getAllPaginatedValues<pullRequest>(
             `${this.baseUrl}/pullrequests/${this.userId}?q=state="MERGED" AND ${this.dateRange}`
         )) {
             if (isBranchOfInterest(pr.destination.branch.name, this.mainBranches)) {
                 this.myPrs.push({ id: pr.id, repoId: pr.destination.repository.uuid });
+                prPrint.push(`${pr.created_on} - ${pr.title}`);
                 this.sums.set(
                     pr.destination.repository.name,
                     (this.sums.get(pr.destination.repository.name) ?? 0) + 1
+                );
+            } else {
+                prPrint.push(
+                    `${pr.created_on} - ${pr.title} - ${pr.destination.branch.name} NOT BRANCH OF INTEREST`
                 );
             }
         }
@@ -229,6 +275,7 @@ export class bitbucketService {
         spinner.success({
             text: 'Successfully retrieved all of your merged pull requests',
         });
+        console.log(prPrint);
     };
 
     // given a url that returns a paginated endpoint return all the values in one array
