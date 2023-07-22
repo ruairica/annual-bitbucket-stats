@@ -20,4 +20,4 @@ const service = new bitbucketStatsService(
 );
 
 await service.getStats();
-service.printOutput();
+service.printStats();

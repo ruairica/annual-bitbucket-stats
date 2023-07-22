@@ -71,7 +71,7 @@ export class bitbucketStatsService {
         console.timeEnd(timeLabel);
     }
 
-    printOutput() {
+    printStats() {
         console.log(
             chalk.inverse(`${this.year}`),
             `${this.quarter ? '-' : ''}`,
