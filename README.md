@@ -17,7 +17,7 @@ Displays useful information about pull requests you have made as well as pull re
 5. cd into the `dist` folder and run `node main.js`
 
 TODO:
-
+-   Rename repo to reflect the fact it is quarterly and annual stats
 -   Add error handling
 -   Use [partial responses](https://developer.atlassian.com/cloud/bitbucket/rest/intro/#partial-response) to get the bitbucket api to send back only the values needed
 -   Make this a package runnable from the command line.
