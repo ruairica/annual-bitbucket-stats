@@ -1,6 +1,6 @@
-## Your annual statistics from Bitbucket
+## Your statistics from Bitbucket
 
-Displays useful information about pull requests you have made as well as pull requests you reviewed.
+Displays useful information about pull requests you have made as well as pull requests you reviewed.<br>Can display results for a specific quarter or a year (see below)
 
 ### Getting started
 
