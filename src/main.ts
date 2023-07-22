@@ -7,7 +7,7 @@ const appPassword = '';
 const workSpace = '';
 const mainBranches = ['develop', 'development', 'main', 'release']; // will check for pull requests being merged into these branches (uses startsWith for comparison, so any branch name that starts with 'release' will be counted)
 const year = 2023;
-const quarter: quarter = 'Q2';
+const quarter: quarter = 'Q2'; // TODO document this
 
 const service = new bitbucketService(
     userName,
