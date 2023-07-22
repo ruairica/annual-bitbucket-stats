@@ -2,26 +2,22 @@ import axios from 'axios';
 import chalk from 'chalk';
 import { createSpinner } from 'nanospinner';
 import pLimit, { LimitFunction } from 'p-limit';
+import { PRActivityResponse } from './apiResponseTypes/ActivityResponse.js';
+import { diffStatResponse } from './apiResponseTypes/DiffStat.js';
+import { comment } from './apiResponseTypes/PullRequestComments.js';
+import { pullRequest } from './apiResponseTypes/PullRequestResponse.js';
+import { UserResponse } from './apiResponseTypes/UserResponse.js';
 import {
     apiResponseValue,
     approver,
     commentModel,
     diffNums,
-    fullPrIdName,
-    getMedian,
-    isBranchOfInterest,
     paginatedResponse,
     prTag,
     quarter,
-    toBase64,
-} from './helpers.js';
-import { PRActivityResponse } from './types/ActivityResponse.js';
-import { diffStatResponse } from './types/DiffStat.js';
-import { PullRequestCommentsResponse, comment } from './types/PullRequestComments.js';
-import { pullRequest } from './types/PullRequestResponse.js';
-import { UserResponse } from './types/UserResponse.js';
-export class bitbucketService {
-    private baseUrl = 'https://api.bitbucket.org/2.0';
+} from './serviceTypes.js';
+export class bitbucketStatsService {
+    private readonly baseUrl = 'https://api.bitbucket.org/2.0';
 
     // input variables
     private limit: LimitFunction;
@@ -58,41 +54,14 @@ export class bitbucketService {
         this.quarter = quarter;
         this.limit = pLimit(asyncLimit);
         this.dateRange = this.getDateRange();
-        console.log(this.dateRange);
 
         // set header for api requests
-        axios.defaults.headers.common['Authorization'] = `Basic ${toBase64(
+        axios.defaults.headers.common['Authorization'] = `Basic ${this.toBase64(
             `${userName}:${appPassword}`
         )}`;
     }
 
-    private getDateRange(): string {
-        if (this.quarter === null) {
-            return `created_on > ${this.year}-01-01T00:00:00-00:00 AND created_on < ${
-                this.year + 1
-            }-01-01T00:00:00-00:00`;
-        }
-
-        if (this.quarter === 'Q4') {
-            return `created_on > ${this.year}-10-01T00:00:00-00:00 AND created_on < ${
-                this.year + 1
-            }-01-01T00:00:00-00:00`;
-        }
-
-        const quaterMap: Map<quarter, number> = new Map([
-            ['Q1', 1],
-            ['Q2', 4],
-            ['Q3', 7],
-        ]);
-
-        const startMonth = quaterMap.get(this.quarter);
-
-        return `created_on > ${this.year}-${startMonth}-01T00:00:00-00:00 AND created_on < ${
-            this.year
-        }-${startMonth + 3}-01T00:00:00-00:00`;
-    }
-
-    run = async () => {
+    async getStats() {
         const timeLabel = 'Time taken to retrieve info';
         console.time(timeLabel);
         await this.getUserInfo();
@@ -100,9 +69,10 @@ export class bitbucketService {
         await this.getDiffsForMyPullRequests();
         await this.getMyPullRequestReviewStats();
         console.timeEnd(timeLabel);
-    };
+    }
 
-    printOutput = () => {
+    printOutput() {
+      
         console.log(
             chalk.inverse(`${this.year}`),
             `${this.quarter ? '-' : ''}`,
@@ -137,13 +107,15 @@ export class bitbucketService {
             )
         );
 
-        if (!this.quarter) {
-            console.log(
-                chalk.whiteBright(`That's a mean average of`),
-                chalk.blue(`+${Math.floor(linesAdded / 12)}/-${Math.floor(linesRemoved / 12)}`), // TODO update this for quarters
-                chalk.whiteBright(`lines of code per month`)
-            );
-        }
+        console.log(
+            chalk.whiteBright(`That's a mean average of`),
+            chalk.blue(
+                `+${Math.floor(linesAdded / 12)}/-${Math.floor(
+                    linesRemoved / (this.quarter ? 3 : 12)
+                )}`
+            ),
+            chalk.whiteBright(`lines of code per month`)
+        );
 
         console.log(
             chalk.whiteBright('Your mean average lines added per PR is'),
@@ -157,12 +129,12 @@ export class bitbucketService {
 
         console.log(
             chalk.whiteBright('Your median average lines added per PR is'),
-            chalk.blue(`${getMedian(this.myDiffs.map((x) => x.linesAdded))}`)
+            chalk.blue(`${this.getMedian(this.myDiffs.map((x) => x.linesAdded))}`)
         );
 
         console.log(
             chalk.whiteBright('Your median average lines removed per PR is'),
-            chalk.blue(`${getMedian(this.myDiffs.map((x) => x.linesRemoved))}`)
+            chalk.blue(`${this.getMedian(this.myDiffs.map((x) => x.linesRemoved))}`)
         );
 
         console.log('\n');
@@ -192,16 +164,16 @@ export class bitbucketService {
             ),
             chalk.whiteBright(`comments per pull request you reviewed`)
         );
-    };
+    }
 
-    getUserInfo = async () => {
+    private async getUserInfo() {
         const spinner = createSpinner('Getting user information').start();
         const user = await this.getCurrentUser();
         this.userId = user.uuid;
         spinner.success({ text: 'Sucessfully retrieved necessary user information' });
-    };
+    }
 
-    getMyPullRequestReviewStats = async () => {
+    private async getMyPullRequestReviewStats() {
         const spinner = createSpinner(
             'Getting all the pull requests you reviewed (this might take a minute...)'
         ).start();
@@ -234,9 +206,9 @@ export class bitbucketService {
         this.numberOfPrsReviewed =
             prsApprovedButNotCommentedOn.length + distinctPrsCommentedOn.size;
         spinner.success({ text: 'Sucessfully retrieved all the pull requests you reviewed' });
-    };
+    }
 
-    getDiffsForMyPullRequests = async () => {
+    private async getDiffsForMyPullRequests() {
         const spinner = createSpinner('Getting diffs for your pull requests').start();
 
         const diffs = await Promise.all(
@@ -247,24 +219,18 @@ export class bitbucketService {
 
         this.myDiffs.push(...diffs);
         spinner.success({ text: 'Sucessfully retrieved diffs' });
-    };
+    }
 
-    getMyPullRequests = async () => {
-        const prPrint = [];
+    private async getMyPullRequests() {
         const spinner = createSpinner('Getting all your merged pull requests.').start();
         for (const pr of await this.getAllPaginatedValues<pullRequest>(
             `${this.baseUrl}/pullrequests/${this.userId}?q=state="MERGED" AND ${this.dateRange}`
         )) {
-            if (isBranchOfInterest(pr.destination.branch.name, this.mainBranches)) {
+            if (this.isBranchOfInterest(pr.destination.branch.name, this.mainBranches)) {
                 this.myPrs.push({ id: pr.id, repoId: pr.destination.repository.uuid });
-                prPrint.push(`${pr.created_on} - ${pr.title}`);
                 this.sums.set(
                     pr.destination.repository.name,
                     (this.sums.get(pr.destination.repository.name) ?? 0) + 1
-                );
-            } else {
-                prPrint.push(
-                    `${pr.created_on} - ${pr.title} - ${pr.destination.branch.name} NOT BRANCH OF INTEREST`
                 );
             }
         }
@@ -275,11 +241,10 @@ export class bitbucketService {
         spinner.success({
             text: 'Successfully retrieved all of your merged pull requests',
         });
-        console.log(prPrint);
-    };
+    }
 
     // given a url that returns a paginated endpoint return all the values in one array
-    getAllPaginatedValues = async <T extends apiResponseValue>(url: string): Promise<T[]> => {
+    private async getAllPaginatedValues<T extends apiResponseValue>(url: string): Promise<T[]> {
         const limit = pLimit(100);
         const responseData: paginatedResponse<T>[] = [];
 
@@ -304,10 +269,9 @@ export class bitbucketService {
         responseData.push(...resolvedPromises.map((x) => x.data));
 
         return responseData.flatMap((x) => x.values);
-    };
+    }
 
-    // returns list of all PRs I approved
-    getAllPrsIApproved = async (repoId: string, userId: string): Promise<string[]> => {
+    private async getAllPrsIApproved(repoId: string, userId: string): Promise<string[]> {
         const initialRequest = `${this.baseUrl}/repositories/${this.workSpace}/${repoId}/pullrequests?q=state="MERGED" AND author.uuid != "${userId}" AND ${this.dateRange}`;
 
         const allPrs = await this.getAllPaginatedValues<pullRequest>(initialRequest);
@@ -322,14 +286,14 @@ export class bitbucketService {
         const allPrAct = await Promise.all(prActivityPromises);
         const prActivies = allPrAct.flatMap((x) => x);
 
-        return prActivies.map((x) => fullPrIdName(repoId, x.prId));
-    };
+        return prActivies.map((x) => this.fullPrIdName(repoId, x.prId));
+    }
 
     // returns a lists of all comments on all PR's in a repo that were not authoblue by the current
-    getAllCommentsForExcludingMyPrs = async (
+    private async getAllCommentsForExcludingMyPrs(
         repoId: string,
         userId: string
-    ): Promise<commentModel[]> => {
+    ): Promise<commentModel[]> {
         const initialRequest = `${this.baseUrl}/repositories/${this.workSpace}/${repoId}/pullrequests?q=state="MERGED" AND author.uuid != "${userId}" AND ${this.dateRange}`;
 
         const allPrs = await this.getAllPaginatedValues<pullRequest>(initialRequest);
@@ -346,23 +310,18 @@ export class bitbucketService {
             (x) =>
                 ({
                     uuid: x.user.uuid,
-                    prId: fullPrIdName(repoId, x.pullrequest.id),
+                    prId: this.fullPrIdName(repoId, x.pullrequest.id),
                 } as commentModel)
         );
-    };
+    }
 
-    getPrComments = async (url: string): Promise<PullRequestCommentsResponse> => {
-        const response = await axios.get<PullRequestCommentsResponse>(url);
-        return response.data;
-    };
-
-    getPrApproversWrapper = async (url: string): Promise<approver[]> => {
+    private async getPrApproversWrapper(url: string): Promise<approver[]> {
         const approvers: approver[] = [];
         await this.getPrApprovers(url, approvers);
         return approvers.filter((x) => x.uuid === this.userId);
-    };
+    }
 
-    getPrApprovers = async (url: string, approvers: approver[]): Promise<approver[]> => {
+    private async getPrApprovers(url: string, approvers: approver[]): Promise<approver[]> {
         const response = await axios.get<PRActivityResponse>(url);
         const approvalsValue = response.data.values.filter((x) => x.approval);
 
@@ -384,10 +343,10 @@ export class bitbucketService {
         // }
 
         return approvers;
-    };
+    }
 
     // returns how many lines were added / removed for a specific PR
-    getDiffStatForPr = async (prId: number, repoId: string): Promise<diffNums> => {
+    private async getDiffStatForPr(prId: number, repoId: string): Promise<diffNums> {
         const url = `${this.baseUrl}/repositories/${this.workSpace}/${repoId}/pullrequests/${prId}/diffstat`;
         const response = await axios.get<diffStatResponse>(url);
 
@@ -396,10 +355,55 @@ export class bitbucketService {
             linesAdded: response.data.values.reduce((sum, cur) => sum + cur.lines_added, 0),
             linesRemoved: response.data.values.reduce((sum, cur) => sum + cur.lines_removed, 0),
         };
-    };
+    }
 
-    getCurrentUser = async (): Promise<UserResponse> => {
+    private async getCurrentUser(): Promise<UserResponse> {
         const response = await axios.get<UserResponse>(`${this.baseUrl}/user`);
         return response.data;
-    };
+    }
+
+    private getDateRange(): string {
+        if (this.quarter === null) {
+            return `created_on > ${this.year}-01-01T00:00:00-00:00 AND created_on < ${
+                this.year + 1
+            }-01-01T00:00:00-00:00`;
+        }
+
+        if (this.quarter === 'Q4') {
+            return `created_on > ${this.year}-10-01T00:00:00-00:00 AND created_on < ${
+                this.year + 1
+            }-01-01T00:00:00-00:00`;
+        }
+
+        const quaterMap: Map<quarter, number> = new Map([
+            ['Q1', 1],
+            ['Q2', 4],
+            ['Q3', 7],
+        ]);
+
+        const startMonth = quaterMap.get(this.quarter);
+
+        return `created_on > ${this.year}-${startMonth}-01T00:00:00-00:00 AND created_on < ${
+            this.year
+        }-${startMonth + 3}-01T00:00:00-00:00`;
+    }
+
+    private toBase64(str: string): string {
+        return Buffer.from(str).toString('base64');
+    }
+
+    // combines pr id and repo id to a string
+    private fullPrIdName(repoId: string, prId: number) {
+        return `${repoId}_${prId}`;
+    }
+
+    private isBranchOfInterest(branchName: string, branchesOfInterest: string[]): boolean {
+        return branchesOfInterest.some((b) => branchName.startsWith(b));
+    }
+
+    private getMedian(arr: number[]): number {
+        const mid = Math.floor(arr.length / 2);
+        const nums = [...arr].sort((a, b) => a - b);
+        return arr.length % 2 !== 0 ? nums[mid] : (nums[mid - 1] + nums[mid]) / 2;
+    }
 }

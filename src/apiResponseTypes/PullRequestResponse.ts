@@ -1,4 +1,4 @@
-import { apiResponseValue, paginatedResponse } from '../helpers.js';
+import { apiResponseValue, paginatedResponse } from '../serviceTypes.js';
 
 export type PullRequestResponse = paginatedResponse<pullRequest>;
 
