@@ -29,6 +29,7 @@ export class bitbucketStatsService {
 
     private userId: string;
     private dateRange = '';
+    private prsNotCounted: string[] = [];
 
     // outputs
     private numberOfPrsReviewed: number;
@@ -72,6 +73,10 @@ export class bitbucketStatsService {
     }
 
     printStats() {
+        console.log('[DEBUG]');
+        console.log(this.prsNotCounted);
+        console.log('-----------------');
+
         console.log(
             chalk.inverse(`${this.year}`),
             `${this.quarter ? '-' : ''}`,
@@ -230,6 +235,10 @@ export class bitbucketStatsService {
                 this.sums.set(
                     pr.destination.repository.name,
                     (this.sums.get(pr.destination.repository.name) ?? 0) + 1
+                );
+            } else {
+                this.prsNotCounted.push(
+                    `${pr.links.self.href} not counted in your pull requests as the destination branch (${pr.destination.branch.name}) is not in the mainBranches`
                 );
             }
         }
