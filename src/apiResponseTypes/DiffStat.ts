@@ -1,8 +1,8 @@
-import { apiResponseValue, paginatedResponse } from '../serviceTypes.js';
+import { ApiResponseValue, PaginatedResponse } from '../serviceTypes.js';
 
-export type diffStatResponse = paginatedResponse<diff>;
+export type diffStatResponse = PaginatedResponse<diff>;
 
-export type diff = diffItem & apiResponseValue;
+export type diff = diffItem & ApiResponseValue;
 
 export interface diffItem {
     type: string;

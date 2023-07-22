@@ -1,26 +1,26 @@
 export type quarter = 'Q1' | 'Q2' | 'Q3' | 'Q4' | null;
 
-export interface prTag {
+export interface PrId {
     id: number;
     repoId: string;
 }
 
-export interface diffNums {
+export interface Diff {
     linesAdded: number;
     linesRemoved: number;
 }
 
-export interface commentModel {
+export interface PrComment {
     uuid: string;
     prId: string;
 }
 
-export interface approver {
+export interface PrApprover {
     uuid: string;
     prId: number;
 }
 
-export interface paginatedResponse<T extends apiResponseValue> {
+export interface PaginatedResponse<T extends ApiResponseValue> {
     values: T[];
     pagelen: number;
     size: number;
@@ -30,6 +30,6 @@ export interface paginatedResponse<T extends apiResponseValue> {
 
 // marker interface to enforce certain values of paginatedResponse
 const brand = Symbol();
-export interface apiResponseValue {
+export interface ApiResponseValue {
     [brand]: never;
 }

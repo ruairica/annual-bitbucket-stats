@@ -8,12 +8,12 @@ import { comment } from './apiResponseTypes/PullRequestComments.js';
 import { pullRequest } from './apiResponseTypes/PullRequestResponse.js';
 import { UserResponse } from './apiResponseTypes/UserResponse.js';
 import {
-    apiResponseValue,
-    approver,
-    commentModel,
-    diffNums,
-    paginatedResponse,
-    prTag,
+    ApiResponseValue,
+    Diff,
+    PaginatedResponse,
+    PrApprover,
+    PrComment,
+    PrId,
     quarter,
 } from './serviceTypes.js';
 export class bitbucketStatsService {
@@ -33,11 +33,11 @@ export class bitbucketStatsService {
     // outputs
     private numberOfPrsReviewed: number;
     private totalCommentsLeftOnPrs: number;
-    private myDiffs: diffNums[] = [];
+    private myDiffs: Diff[] = [];
     private sums = new Map<string, number>();
     private repoIdsOfReposIContributedTo = new Set<string>();
     private totalMergedPrs: number;
-    private myPrs: prTag[] = [];
+    private myPrs: PrId[] = [];
 
     constructor(
         userName: string,
@@ -72,7 +72,6 @@ export class bitbucketStatsService {
     }
 
     printOutput() {
-      
         console.log(
             chalk.inverse(`${this.year}`),
             `${this.quarter ? '-' : ''}`,
@@ -244,12 +243,12 @@ export class bitbucketStatsService {
     }
 
     // given a url that returns a paginated endpoint return all the values in one array
-    private async getAllPaginatedValues<T extends apiResponseValue>(url: string): Promise<T[]> {
+    private async getAllPaginatedValues<T extends ApiResponseValue>(url: string): Promise<T[]> {
         const limit = pLimit(100);
-        const responseData: paginatedResponse<T>[] = [];
+        const responseData: PaginatedResponse<T>[] = [];
 
         // await the first response to see how many pages there is
-        const response = await axios.get<paginatedResponse<T>>(url);
+        const response = await axios.get<PaginatedResponse<T>>(url);
         responseData.push(response.data);
 
         const promiseArray = [];
@@ -258,7 +257,7 @@ export class bitbucketStatsService {
         for (let i = 2; i <= totalPages; i++) {
             promiseArray.push(
                 limit(() =>
-                    axios.get<paginatedResponse<T>>(
+                    axios.get<PaginatedResponse<T>>(
                         // inconsistent pagination syntax from their api
                         `${url}${url.endsWith('comments') ? '?' : '&'}page=${i}`
                     )
@@ -293,7 +292,7 @@ export class bitbucketStatsService {
     private async getAllCommentsForExcludingMyPrs(
         repoId: string,
         userId: string
-    ): Promise<commentModel[]> {
+    ): Promise<PrComment[]> {
         const initialRequest = `${this.baseUrl}/repositories/${this.workSpace}/${repoId}/pullrequests?q=state="MERGED" AND author.uuid != "${userId}" AND ${this.dateRange}`;
 
         const allPrs = await this.getAllPaginatedValues<pullRequest>(initialRequest);
@@ -311,17 +310,17 @@ export class bitbucketStatsService {
                 ({
                     uuid: x.user.uuid,
                     prId: this.fullPrIdName(repoId, x.pullrequest.id),
-                } as commentModel)
+                } as PrComment)
         );
     }
 
-    private async getPrApproversWrapper(url: string): Promise<approver[]> {
-        const approvers: approver[] = [];
+    private async getPrApproversWrapper(url: string): Promise<PrApprover[]> {
+        const approvers: PrApprover[] = [];
         await this.getPrApprovers(url, approvers);
         return approvers.filter((x) => x.uuid === this.userId);
     }
 
-    private async getPrApprovers(url: string, approvers: approver[]): Promise<approver[]> {
+    private async getPrApprovers(url: string, approvers: PrApprover[]): Promise<PrApprover[]> {
         const response = await axios.get<PRActivityResponse>(url);
         const approvalsValue = response.data.values.filter((x) => x.approval);
 
@@ -346,7 +345,7 @@ export class bitbucketStatsService {
     }
 
     // returns how many lines were added / removed for a specific PR
-    private async getDiffStatForPr(prId: number, repoId: string): Promise<diffNums> {
+    private async getDiffStatForPr(prId: number, repoId: string): Promise<Diff> {
         const url = `${this.baseUrl}/repositories/${this.workSpace}/${repoId}/pullrequests/${prId}/diffstat`;
         const response = await axios.get<diffStatResponse>(url);
 

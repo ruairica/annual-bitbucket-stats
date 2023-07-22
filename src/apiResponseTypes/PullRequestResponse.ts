@@ -1,8 +1,8 @@
-import { apiResponseValue, paginatedResponse } from '../serviceTypes.js';
+import { ApiResponseValue, PaginatedResponse } from '../serviceTypes.js';
 
-export type PullRequestResponse = paginatedResponse<pullRequest>;
+export type PullRequestResponse = PaginatedResponse<pullRequest>;
 
-export type pullRequest = pullRequestItem & apiResponseValue;
+export type pullRequest = pullRequestItem & ApiResponseValue;
 
 export interface pullRequestItem {
     comment_count: number;
